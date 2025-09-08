@@ -1,0 +1,56 @@
+[project]
+name = "bobtimes_monorepo"
+description = "BobTimes Monorepo"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "common",
+    "shared_db",
+    "backend",
+    "litellm>=1.75.8",
+    "boto3>=1.40.14",
+    "tenacity>=9.1.2",
+]
+
+[tool.uv.sources]
+common = { workspace = true }
+shared_db = { workspace = true }
+backend = { workspace = true }
+
+[tool.uv.workspace]
+members = ["libs/*/", "backend"]
+
+[tool.uv]
+package = false
+cache-dir = ".cache"
+dev-dependencies = [
+    "ruff>=0.12.7",
+    "pyright>=1.1.403",
+    "pre-commit>=4.2.0",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=0.24.0",
+    "pytest-env>=1.1.5",
+    "pytest-xdist[psutil]>=3.8.0",
+    "httpx>=0.28.1",
+    "coverage>=7.10.1"
+]
+
+[tool.pytest.ini_options]
+addopts = "-v --tb=short"
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::PendingDeprecationWarning"
+]
+testpaths = ["tests"]
+
+[tool.pytest_env]
+ENVIRONMENT = "unit_test"
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+[dependency-groups]
+dev = []

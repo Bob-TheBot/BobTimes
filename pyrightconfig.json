@@ -1,0 +1,25 @@
+{
+  "pythonVersion": "3.13",
+  "venvPath": ".",
+  "venv": ".venv",
+  "typeCheckingMode": "strict",
+  "deprecateTypingAliases": true,
+  "reportCallInDefaultInitializer": "none",
+  "reportImplicitOverride": "none",
+  "reportImplicitStringConcatenation": "none",
+  "reportImportCycles": "error",
+  "reportMissingSuperCall": "none",
+  "reportPropertyTypeMismatch": "error",
+  "reportShadowedImports": "error",
+  "reportUninitializedInstanceVariable": "error",
+  "reportUnnecessaryTypeIgnoreComment": "error",
+  "reportUnusedCallResult": "none",
+  "reportUnknownMemberType": "none",
+  "reportUnknownArgumentType": "none",
+  "reportUnknownParameterType": "none",
+  "extraPaths": [
+    "backend",
+    "libs/common",
+    "libs/shared_db",
+  ]
+}

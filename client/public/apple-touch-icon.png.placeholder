@@ -1,0 +1,19 @@
+# Placeholder for apple-touch-icon.png
+# This should be a 180x180 pixel PNG image of your app icon
+# Used for iOS Safari bookmarks and home screen shortcuts
+# 
+# To create this file:
+# 1. Design your app icon (square format, avoid transparency)
+# 2. Export as PNG at 180x180 pixels
+# 3. Rename this file from apple-touch-icon.png.placeholder to apple-touch-icon.png
+# 4. Replace this text file with your actual PNG image
+#
+# Apple guidelines:
+# - Use solid backgrounds (no transparency)
+# - iOS will automatically add rounded corners and drop shadow
+# - Keep important elements away from edges (they may be cropped)
+#
+# You can use the icon.svg as a base and convert it to PNG using:
+# - Online converters like https://convertio.co/svg-png/
+# - Design tools like Figma, Sketch, or Adobe Illustrator
+# - Command line tools like Inkscape: inkscape icon.svg -w 180 -h 180 -o apple-touch-icon.png
