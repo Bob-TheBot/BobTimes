@@ -86,12 +86,6 @@ class ConfigService:
         except (KeyError, TypeError):
             return default
 
-    # Database configuration
-
-    def get_database_url(self) -> str:
-        """Get the database URL from configuration."""
-        return self.get("database.url", "")
-
     # Environment helpers
 
     def is_development(self) -> bool:

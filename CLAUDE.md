@@ -31,24 +31,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 * **Shared Libraries Usage:**
     * **Common Library (`libs/common/`):** Use shared utilities for configuration, logging, LLM services, and exceptions.
-    * **Shared DB Library (`libs/shared_db/`):** Use shared database models, migrations, and database utilities.
-    * **Import Pattern:** Always import from shared libraries: `from core.config_service import ConfigService`, `from shared_db.models.example import Example`
+    * **Import Pattern:** Always import from shared libraries: `from core.config_service import ConfigService`
 * **Configuration Management:**
     * **Centralized Config:** All configuration files are located in `libs/common/` (`.env.*`, `secrets.yaml`)
     * **Config Service:** Use `ConfigService` from `core.config_service` for all configuration access
     * **Environment Variables:** Load from shared `.env` files in `libs/common/`
     * **Secrets:** Store sensitive data in `libs/common/secrets.yaml` (never commit this file)
 * **Dependency Injection & Initialization:**
-    * Use FastAPI's built-in dependency injection system to manage all dependencies, such as database sessions, services, and DAOs.
+    * Use FastAPI's built-in dependency injection system to manage all dependencies, such as services.
     * A central `dependencies.py` file must be used to create and configure these dependencies. This file will contain provider functions that initialize and `yield` instances.
-    * **Database Session:** The `dependencies.py` file must include a `get_db` dependency that provides a database session for a single request and ensures it is properly closed after the request is complete.
-    * **Services and DAOs:** Create specific dependency provider functions for each service and DAO (e.g., `get_example_service`). These functions will typically depend on other dependencies, like `get_db`.
-    * **Usage:** Inject dependencies directly into API endpoint function signatures using `Depends`. Do not instantiate DAOs, services, or sessions manually within endpoint logic.
-* **Database Access:**
-    * Use the `BaseDAO` for all database operations. Do not use `CRUDBase`.
-    * All CRUD methods must return a Pydantic object.
-* **Pydantic Models:**
-    * Models that map to database tables must include `to()` and `from_()` methods for converting between the Pydantic object and the database model.
+    * **Services:** Create specific dependency provider functions for each service (e.g., `get_example_service`).
+    * **Usage:** Inject dependencies directly into API endpoint function signatures using `Depends`. Do not instantiate services manually within endpoint logic.
 * **Type Hinting & Enums:**
     * Use `StrEnum` for string-based enumerations.
     * Prefer Enums over raw strings where applicable (e.g., for status fields, roles).
@@ -132,10 +125,6 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 * **Initial Setup:**
     * **Install all dependencies:** `just sync` or `uv sync`
     * **Full setup with pre-commit:** `just setup`
-    * **Initialize database:** `just init`
-* **Database Migrations:**
-    * **Generate migration:** `just generate_migration` (creates new Alembic migration)
-    * **Apply migrations:** `just migrate` (applies to development database)
 * **Development:**
     * **Start Backend:** `just run-backend` (port 9200, auto-reload enabled)
     * **Start Frontend:** `just run-client` (port 51273, Vite dev server)

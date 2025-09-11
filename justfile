@@ -36,26 +36,6 @@ format folder=".":
 pyright directory=".":
     uv run pyright --threads 8 {{directory}}
 
-# Initialize the database (create it if it doesn't exist)
-init:
-    uv run --package common python -m common.commands.db_commands init
-
-# Generate a new Alembic migration (uv monorepo version)
-generate_migration db_type="core":
-    uv run --package shared_db alembic -c libs/shared_db/alembic.ini revision --autogenerate
-
-# Apply Alembic migrations (uv monorepo version)
-migrate db_type="core":
-    uv run --package shared_db alembic -c libs/shared_db/alembic.ini upgrade head
-
-# Downgrade database by one migration
-downgrade db_type="core":
-    uv run --package shared_db alembic -c libs/shared_db/alembic.ini downgrade -1
-
-# Populate database with sample data (uv version)
-populate_db:
-    uv run --package shared_db python -m shared_db.db.populate_db
-
 
 # Run the backend server (uv version)
 run-backend:
@@ -117,7 +97,7 @@ start-test-servers:
     done
 
     echo "🚀 Starting backend server on port 9201..."
-    APP_ENV=test DATABASE_URL=sqlite:///./test_database.db uv run --package backend uvicorn app.main:app --host 0.0.0.0 --port 9201 --reload &
+    APP_ENV=test uv run --package backend uvicorn app.main:app --host 0.0.0.0 --port 9201 --reload &
     BACKEND_PID=$!
 
     echo "⏳ Waiting for backend to be ready..."
@@ -157,21 +137,7 @@ start-test-servers:
         sleep 1
     done
 
-    echo "📊 Setting up test database..."
-    echo "🔧 Running database migrations..."
-    cd /workspaces/bobtimes && APP_ENV=test DATABASE_URL=sqlite:///./test_database.db uv run --package shared_db alembic -c libs/shared_db/alembic.ini upgrade head
-
-    # Wait a moment for migration to complete and verify database file exists
-    sleep 2
-    if [ ! -f "./test_database.db" ]; then
-        echo "❌ Test database file not created after migration"
-        exit 1
-    fi
-    echo "✅ Database migrations completed successfully"
-
-    echo "📝 Populating test data..."
-    cd /workspaces/bobtimes && APP_ENV=test DATABASE_URL=sqlite:///./test_database.db uv run python -m shared_db.db.populate_test_db
-    echo "✅ Test database ready"
+    echo "✅ Test servers setup completed"
 
     echo "🎉 Test servers are running!"
     echo "Backend: http://localhost:9201"

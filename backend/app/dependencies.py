@@ -1,22 +1,8 @@
-from collections.abc import Generator
-
 from core.config_service import ConfigService
 from core.llm_service import LLMService
 from fastapi import Depends
-from sqlalchemy.orm import Session
-
-from shared_db.db import SessionLocal
 
 from .services.newspaper_service import NewspaperService
-
-
-def get_db() -> Generator[Session]:
-    """Dependency for database session."""
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
 
 
 def get_config_service() -> ConfigService:

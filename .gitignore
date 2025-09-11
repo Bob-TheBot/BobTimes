@@ -9,6 +9,7 @@ __pycache__/
 
 # Secret files
 secrets.yaml
+libs/secrets.yaml
 libs/common/secrets.yaml
 
 # Distribution / packaging

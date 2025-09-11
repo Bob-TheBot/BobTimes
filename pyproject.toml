@@ -5,7 +5,6 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
     "common",
-    "shared_db",
     "backend",
     "litellm>=1.75.8",
     "boto3>=1.40.14",
@@ -14,7 +13,6 @@ dependencies = [
 
 [tool.uv.sources]
 common = { workspace = true }
-shared_db = { workspace = true }
 backend = { workspace = true }
 
 [tool.uv.workspace]

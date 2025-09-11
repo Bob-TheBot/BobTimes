@@ -5,7 +5,6 @@ requires-python = ">=3.13"
 version = "0.1.0"
 dependencies = [
     "common",
-    "shared_db",
     "fastapi[standard]>=0.116.1",
     "uvicorn>=0.35.0",
     "python-multipart>=0.0.17",
