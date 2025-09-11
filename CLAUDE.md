@@ -20,7 +20,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 * **Frontend:** React 18, Vite (port 51273), TypeScript, magic ui, Tailwind CSS, shadcn/ui
 * **LLM Integration:** LiteLLM with multi-provider support (OpenAI, Anthropic, Gemini, AWS Bedrock, Azure)
 * **Package Management:** uv (Python 3.13 workspace management)
-* **Testing:** pytest, Jest, Playwright (with automatic server management)
+
 * **Project Structure:** Monorepo with shared libraries:
   * `backend/` - FastAPI application with dependency injection
   * `client/` - React frontend with responsive design requirement
@@ -88,26 +88,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     * **Error Example:** `{ "status": "error", "message": "A descriptive error message" }`
 * **Environment Variables:** All sensitive information (API keys, database URLs, secrets) must be loaded from environment variables using Pydantic's `BaseSettings`, never hardcoded.
 
-### **6. Testing**
-
-* **General Mandate:** All new features must be accompanied by tests. When modifying existing code, update existing tests or add them if they are missing.
-* **Backend Testing:**
-    * **Unit Tests:** Test individual functions and classes in isolation.
-    * **Integration Tests:** Test the interaction between different parts of the application, including database operations.
-    * **Implementation:** Use real classes and functionalities from shared libraries. Create mock data tailored for each test case.
-    * **Test Database:** Use shared database models from `libs/shared_db/` for consistent testing
-    * **Test Commands:** Use `uv run pytest` or `just test` to run tests
-* **Client (Frontend) Testing:**
-    * **Unit Tests (Jest):** Write Jest tests for business logic, hooks, and utility functions.
-    * **E2E / UI Tests (Playwright):**
-        * Write tests to verify the UI and user interactions for both **desktop** and **mobile** viewports using **Chrome**.
-        * Place tests in the `/tests` folder under the client directory.
-        * **Test Suites:**
-            * **Regression Suite:** Covers only the most critical, essential features to ensure core functionality is stable.
-            * **Full Suite:** Includes regression tests plus detailed tests for edge cases and less critical interactions.
-        * **Testability:** Add `data-testid` attributes to key interactive elements to create stable selectors for Playwright, making tests less brittle.
-
-### **7. Package Management & Dependencies**
+### **6. Package Management & Dependencies**
 
 * **uv Workspace Management:**
     * **Install Dependencies:** Use `uv sync` to install all workspace dependencies
@@ -129,13 +110,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
     * **Start Backend:** `just run-backend` (port 9200, auto-reload enabled)
     * **Start Frontend:** `just run-client` (port 51273, Vite dev server)
     * **Start Both:** `just run` (runs backend and frontend concurrently)
-* **Testing:**
-    * **Python Tests:** `just test` or `uv run pytest`
-    * **Run Specific Test:** `uv run pytest path/to/test.py::TestClass::test_method`
-    * **E2E Tests (All):** `just test-e2e` (auto-starts test servers)
-    * **E2E Regression:** `just test-e2e regression` (critical tests only)
-    * **E2E Specific:** `just test-e2e login` (run specific test suites)
-    * **Test Servers:** `just start-test-servers` / `just stop-test-servers` (ports 9201, 5274)
+
 * **Code Quality:**
     * **Lint Check:** `just lint` or `uv run ruff check`
     * **Auto-format:** `just format` or `uv run ruff format`
@@ -164,11 +139,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 * **Error Response Pattern:**
     * All API errors return standardized JSON: `{"status": "error", "message": "..."}`
     * Use HTTP status codes appropriately (400 for client errors, 500 for server errors)
-* **Testing Infrastructure:**
-    * E2E tests automatically manage test server lifecycle
-    * Test database uses SQLite for isolation
-    * Mock Cognito available for authentication testing
-    * VS Code Playwright extension fully configured
+
 * **Frontend Context Pattern:**
     * Contexts handle their own error states
     * Components consume error states from contexts
@@ -182,11 +153,7 @@ To ensure the LLM assistant operates with perfect clarity, I recommend we define
 
 1.  **Shared Libraries Usage:**
     * **Import Patterns:** When should code import from `libs/common/` vs `libs/shared_db/` vs local modules? Are there any circular dependency concerns to be aware of?
-2.  **Backend Testing Scope:**
-    * **Unit vs. Integration:** Could you provide a clear example that distinguishes a "unit test" from an "integration test" in our monorepo context? For instance, is testing a `BaseDAO` method with shared database models an integration test, while testing a Pydantic model's `from_()` method is a unit test?
-3.  **Frontend Testing Scope:**
-    * **Regression vs. Full:** Can you define the boundary for the "Regression" suite? For example, for a login feature, would regression only be "successful login," while the "Full" suite would also test "invalid password," "user not found," and "empty fields"?
-4.  **Configuration Management:**
+2.  **Configuration Management:**
     * **Environment-Specific Config:** How should environment-specific configurations be handled across the monorepo? Should each package have its own environment handling or rely entirely on the shared config service?
 5.  **Permissions:**
     * What is the preferred communication channel for asking for permission to execute out-of-scope tasks? (e.g., a specific comment format in the code, a message in a chat, etc.)

@@ -95,25 +95,7 @@ type: "always_apply"
     * **Error Example:** `{ "status": "error", "message": "A descriptive error message" }`
 * **Environment Variables:** All sensitive information (API keys, database URLs, secrets) must be loaded from environment variables using Pydantic's `BaseSettings`, never hardcoded.
 
-### **6. Testing**
-
-* **General Mandate:** All new features must be accompanied by tests. When modifying existing code, update existing tests or add them if they are missing.
-* **Backend Testing:**
-    * **Unit Tests:** Test individual functions and classes in isolation.
-    * **Integration Tests:** Test the interaction between different parts of the application.
-    * **Implementation:** Use real classes and functionalities from shared libraries. Create mock data tailored for each test case.
-    * **Test Commands:** Use `uv run pytest` or `just test` to run tests
-* **Client (Frontend) Testing:**
-    * **Unit Tests (Jest):** Write Jest tests for business logic, hooks, and utility functions.
-    * **E2E / UI Tests (Playwright):**
-        * Write tests to verify the UI and user interactions for both **desktop** and **mobile** viewports using **Chrome**.
-        * Place tests in the `/tests` folder under the client directory.
-        * **Test Suites:**
-            * **Regression Suite:** Covers only the most critical, essential features to ensure core functionality is stable.
-            * **Full Suite:** Includes regression tests plus detailed tests for edge cases and less critical interactions.
-        * **Testability:** Add `data-testid` attributes to key interactive elements to create stable selectors for Playwright, making tests less brittle.
-
-### **7. Package Management & Dependencies**
+### **6. Package Management & Dependencies**
 
 * **uv Workspace Management:**
     * **Install Dependencies:** Use `uv sync` to install all workspace dependencies
@@ -134,7 +116,7 @@ type: "always_apply"
 * **Development Commands:**
     * **Start Backend:** `just run-backend` or `uv run --package backend uvicorn app.main:app --reload`
     * **Start Frontend:** `just run-client` or `cd client && npm start`
-    * **Run Tests:** `just test` or `uv run pytest`
+
     * **Lint Code:** `just lint` or `uv run ruff check`
     * **Format Code:** `just format` or `uv run ruff format`
 
@@ -146,11 +128,7 @@ To ensure the LLM assistant operates with perfect clarity, I recommend we define
 
 1.  **Shared Libraries Usage:**
     * **Import Patterns:** When should code import from `libs/common/` vs local modules? Are there any circular dependency concerns to be aware of?
-2.  **Backend Testing Scope:**
-    * **Unit vs. Integration:** Could you provide a clear example that distinguishes a "unit test" from an "integration test" in our monorepo context? For instance, is testing a service method an integration test, while testing a Pydantic model's `from_()` method is a unit test?
-3.  **Frontend Testing Scope:**
-    * **Regression vs. Full:** Can you define the boundary for the "Regression" suite? For example, for a login feature, would regression only be "successful login," while the "Full" suite would also test "invalid password," "user not found," and "empty fields"?
-4.  **Configuration Management:**
+2.  **Configuration Management:**
     * **Environment-Specific Config:** How should environment-specific configurations be handled across the monorepo? Should each package have its own environment handling or rely entirely on the shared config service?
 5.  **Permissions:**
     * What is the preferred communication channel for asking for permission to execute out-of-scope tasks? (e.g., a specific comment format in the code, a message in a chat, etc.)

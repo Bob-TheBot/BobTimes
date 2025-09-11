@@ -8,14 +8,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "./playwright-with-servers.sh",
-    "test:raw": "playwright test",
-    "test:e2e": "../run-tests.sh",
-    "test:regression": "./playwright-with-servers.sh --config=playwright.regression.config.ts",
-    "test:ui": "./playwright-with-servers.sh --ui",
-    "test:headed": "./playwright-with-servers.sh --headed",
-    "test:report": "playwright show-report test-results/html-report",
-    "test:clean": "../run-tests.sh clean"
+
   },
   "dependencies": {
     "@hookform/resolvers": "^5.0.1",
@@ -39,7 +32,6 @@
     "zod": "^3.25.49"
   },
   "devDependencies": {
-    "@playwright/test": "^1.40.0",
     "@types/node": "^18.0.0",
     "@types/react": "^18.0.0",
     "@types/react-dom": "^18.0.0",
