@@ -17,9 +17,11 @@
   "reportUnknownMemberType": "none",
   "reportUnknownArgumentType": "none",
   "reportUnknownParameterType": "none",
+  "reportMissingTypeStubs": "none",
   "extraPaths": [
     "backend",
     "libs/common",
     "libs/shared_db",
+    "strands_examples"
   ]
 }
