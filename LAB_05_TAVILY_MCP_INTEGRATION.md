@@ -1884,5 +1884,404 @@ class MCPCache:
             "default_ttl": self.default_ttl
         }
 ```
+
+## 🚀 Step 8: Complete Integration Example
+
+### 8.1 Create Enhanced Three-Agent Workflow with MCP
+
+Create the file `generate_newspaper_with_mcp.py`:
+
+```python
+"""Complete newspaper generation using three-agent workflow enhanced with MCP."""
+
+import asyncio
+from datetime import datetime
+
+from agents.agent_factory import AgentFactory
+from agents.researcher_agent.research_models import ResearchRequest, EditorialReviewRequest
+from agents.types import ReporterField
+from core.config_service import ConfigService
+from utils.forbidden_topics_tool import ForbiddenTopicsTool, ForbiddenTopicsParams
+from utils.mcp_tool_registry import MCPToolRegistry
+
+
+async def generate_newspaper_with_mcp():
+    """Generate newspaper using MCP-enhanced research capabilities."""
+    print("📰 BobTimes MCP-Enhanced Newspaper Generation")
+    print("=" * 70)
+
+    config_service = ConfigService()
+    factory = AgentFactory(config_service)
+
+    # Initialize MCP tools
+    mcp_registry = MCPToolRegistry(config_service)
+    available_mcp_tools = mcp_registry.list_tools()
+
+    print(f"🔌 MCP Tools Available: {available_mcp_tools}")
+
+    # Create agents
+    researcher = factory.create_researcher()
+    editor = factory.create_editor()
+    reporters = {
+        ReporterField.TECHNOLOGY: factory.create_reporter(ReporterField.TECHNOLOGY),
+        ReporterField.SCIENCE: factory.create_reporter(ReporterField.SCIENCE),
+        ReporterField.ECONOMICS: factory.create_reporter(ReporterField.ECONOMICS)
+    }
+
+    print("✅ Created all agents with MCP integration")
+
+    # Phase 1: Enhanced Research with MCP
+    print("\n🔬 PHASE 1: MCP-ENHANCED RESEARCH")
+    print("-" * 40)
+
+    start_time = datetime.now()
+
+    # Research with MCP integration
+    research_result = await researcher.research_trending_topics(
+        fields=["technology", "science", "economics"],
+        topics_per_field=4  # More topics due to enhanced research
+    )
+
+    research_duration = (datetime.now() - start_time).total_seconds()
+
+    if not research_result["success"]:
+        print(f"❌ Research failed: {research_result['error']}")
+        return
+
+    print(f"   ✅ MCP-enhanced research completed in {research_duration:.1f}s")
+    print(f"   📊 Topics discovered: {len(research_result['topics_researched'])}")
+    print(f"   🔍 Total sources gathered: {research_result['total_sources']}")
+
+    # Analyze source distribution
+    source_breakdown = {}
+    mcp_sources = 0
+
+    for topic_data in research_result["topics_researched"]:
+        for source in topic_data["sources"]:
+            source_type = source["source_type"]
+            source_breakdown[source_type] = source_breakdown.get(source_type, 0) + 1
+
+            # Count MCP sources (from Tavily)
+            if "tavily" in source.get("metadata", {}).get("domain", "").lower():
+                mcp_sources += 1
+
+    print(f"   📋 Source breakdown: {dict(source_breakdown)}")
+    print(f"   🔌 MCP sources: {mcp_sources}")
+
+    # Show sample MCP-enhanced topics
+    print(f"\n   🎯 Sample MCP-Enhanced Topics:")
+    for i, topic_data in enumerate(research_result["topics_researched"][:3]):
+        print(f"      {i+1}. {topic_data['topic_title']}")
+        print(f"         Field: {topic_data['field']}")
+        print(f"         Trending Score: {topic_data['trending_score']:.2f}")
+        print(f"         Sources: {len(topic_data['sources'])} (depth: {topic_data['research_depth']})")
+
+        # Show source quality
+        avg_relevance = sum(s["relevance_score"] for s in topic_data["sources"]) / len(topic_data["sources"])
+        print(f"         Avg Relevance: {avg_relevance:.2f}")
+
+    # Phase 2: Editorial Review with Enhanced Data
+    print("\n📝 PHASE 2: EDITORIAL REVIEW")
+    print("-" * 30)
+
+    # Get forbidden topics
+    forbidden_tool = ForbiddenTopicsTool(config_service)
+    forbidden_params = ForbiddenTopicsParams(operation="get_forbidden", days_back=30)
+    forbidden_result = await forbidden_tool.execute(forbidden_params)
+    forbidden_topics = forbidden_result.forbidden_topics if forbidden_result.success else []
+
+    print(f"   🚫 Checking against {len(forbidden_topics)} forbidden topics")
+
+    # Convert research for editorial review
+    from agents.researcher_agent.research_models import ResearchResult, TopicResearch
+
+    topics_researched = [TopicResearch(**topic_data) for topic_data in research_result["topics_researched"]]
+    research_obj = ResearchResult(
+        success=True,
+        topics_researched=topics_researched,
+        total_sources=research_result["total_sources"],
+        research_summary=research_result["research_summary"],
+        fields_covered=[ReporterField(f) for f in research_result["fields_covered"]],
+        research_duration=research_result["research_duration"]
+    )
+
+    # Editorial review with enhanced criteria
+    review_request = EditorialReviewRequest(
+        research_result=research_obj,
+        forbidden_topics=forbidden_topics,
+        priority_fields=[ReporterField.TECHNOLOGY, ReporterField.SCIENCE],
+        max_topics_to_select=8  # More topics due to better research quality
+    )
+
+    editorial_tool = next((tool for tool in editor.tools if tool.name == "editorial_research_review"), None)
+    if not editorial_tool:
+        print("❌ Editorial research review tool not found")
+        return
+
+    editorial_decision = await editorial_tool.execute(review_request)
+
+    print(f"   ✅ Editorial review completed")
+    print(f"   📝 Selected {len(editorial_decision.selected_topics)} high-quality topics")
+    print(f"   ❌ Rejected {len(editorial_decision.rejected_topics)} topics")
+
+    # Show selected topics with quality metrics
+    print(f"\n   🎯 Selected Topics for Publication:")
+    for topic in editorial_decision.selected_topics:
+        priority = editorial_decision.assignment_priority.get(topic.topic_title, 0)
+        avg_source_relevance = sum(s.relevance_score for s in topic.sources) / len(topic.sources)
+        print(f"      ✅ {topic.topic_title}")
+        print(f"         Field: {topic.field.value} | Priority: {priority} | Avg Relevance: {avg_source_relevance:.2f}")
+        print(f"         Sources: {len(topic.sources)} | Trending: {topic.trending_score:.2f}")
+
+    # Phase 3: Enhanced Story Writing
+    print("\n✍️  PHASE 3: MCP-ENHANCED STORY WRITING")
+    print("-" * 45)
+
+    completed_stories = []
+    writing_stats = {
+        "total_time": 0,
+        "total_words": 0,
+        "total_sources_used": 0,
+        "avg_research_coverage": 0
+    }
+
+    for topic in editorial_decision.selected_topics:
+        try:
+            print(f"\n   📝 Writing: {topic.topic_title}")
+
+            # Get appropriate reporter
+            reporter = reporters[topic.field]
+
+            # Create enhanced story assignment
+            from agents.researcher_agent.research_models import StoryAssignment
+
+            assignment = StoryAssignment(
+                topic_research=topic,
+                reporter_field=topic.field,
+                assignment_notes=editorial_decision.editorial_notes.get(topic.topic_title, ""),
+                priority_level=editorial_decision.assignment_priority.get(topic.topic_title, 1),
+                required_word_count=600,  # Longer stories due to richer research
+                editorial_guidelines="Write comprehensive story leveraging MCP-enhanced research data with multiple high-quality sources."
+            )
+
+            # Find research story tool
+            research_tool = next((tool for tool in reporter.tools if tool.name == "research_story_writer"), None)
+            if not research_tool:
+                print(f"   ⚠️  Research story tool not found for {topic.topic_title}")
+                continue
+
+            # Write story with enhanced parameters
+            from agents.reporter_agent.research_story_tool import ResearchStoryParams
+
+            story_params = ResearchStoryParams(
+                story_assignment=assignment,
+                writing_style="engaging",
+                include_quotes=True,
+                focus_angle="comprehensive"
+            )
+
+            story_result = await research_tool.execute(story_params)
+
+            if story_result.success:
+                completed_stories.append(story_result.story_draft)
+
+                # Update stats
+                writing_stats["total_time"] += story_result.writing_time
+                writing_stats["total_words"] += story_result.word_count
+                writing_stats["total_sources_used"] += story_result.sources_used
+                writing_stats["avg_research_coverage"] += story_result.research_coverage
+
+                print(f"      ✅ Story completed successfully")
+                print(f"         Word count: {story_result.word_count}")
+                print(f"         Sources used: {story_result.sources_used}/{len(topic.sources)}")
+                print(f"         Research coverage: {story_result.research_coverage:.1%}")
+                print(f"         Writing time: {story_result.writing_time:.1f}s")
+            else:
+                print(f"      ❌ Story failed: {story_result.error}")
+
+        except Exception as e:
+            print(f"   ❌ Story creation failed for {topic.topic_title}: {e}")
+            continue
+
+    # Calculate final stats
+    if completed_stories:
+        writing_stats["avg_research_coverage"] /= len(completed_stories)
+
+    # Phase 4: Publication and Memory Update
+    print("\n📰 PHASE 4: PUBLICATION")
+    print("-" * 25)
+
+    print(f"   📚 Stories completed: {len(completed_stories)}")
+
+    # Update topic memory
+    for story in completed_stories:
+        from utils.topic_memory_models import CoveredTopic, TopicStatus
+
+        covered_topic = CoveredTopic(
+            title=story.title,
+            description=story.summary,
+            field=story.field,
+            published_date=datetime.now().strftime("%Y-%m-%d"),
+            story_id=f"story-{story.field.value}-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
+            keywords=[],  # Could extract from content
+            status=TopicStatus.PUBLISHED
+        )
+
+        add_params = ForbiddenTopicsParams(operation="add_topic", new_topic=covered_topic)
+        await forbidden_tool.execute(add_params)
+
+    print(f"   ✅ Updated topic memory with {len(completed_stories)} new topics")
+
+    # Final Summary
+    print(f"\n🎉 MCP-ENHANCED NEWSPAPER GENERATION COMPLETED!")
+    print("=" * 60)
+
+    # Field distribution
+    field_counts = {}
+    for story in completed_stories:
+        field_counts[story.field.value] = field_counts.get(story.field.value, 0) + 1
+
+    print(f"📊 FINAL STATISTICS:")
+    print(f"   Stories by field: {dict(field_counts)}")
+    print(f"   Total word count: {writing_stats['total_words']:,}")
+    print(f"   Total sources used: {writing_stats['total_sources_used']}")
+    print(f"   Average research coverage: {writing_stats['avg_research_coverage']:.1%}")
+    print(f"   Total writing time: {writing_stats['total_time']:.1f}s")
+    print(f"   Research time: {research_duration:.1f}s")
+    print(f"   Total generation time: {(datetime.now() - start_time).total_seconds():.1f}s")
+
+    # MCP Impact Analysis
+    print(f"\n🔌 MCP IMPACT ANALYSIS:")
+    print(f"   MCP sources integrated: {mcp_sources}")
+    print(f"   Source quality improvement: Enhanced relevance scoring")
+    print(f"   Research speed: Parallel MCP + traditional sources")
+    print(f"   Content depth: Richer research data for better stories")
+
+    # Show sample story
+    if completed_stories:
+        sample_story = completed_stories[0]
+        print(f"\n📖 SAMPLE MCP-ENHANCED STORY:")
+        print(f"   Title: {sample_story.title}")
+        print(f"   Field: {sample_story.field.value}")
+        print(f"   Word Count: {sample_story.word_count}")
+        print(f"   Sources: {len(sample_story.sources)}")
+        print(f"   Content Preview:")
+        print(f"   {sample_story.content[:300]}...")
+
+    # Cleanup
+    await mcp_registry.cleanup()
+
+    print(f"\n🏆 MCP-enhanced journalism pipeline completed successfully!")
+
+
+if __name__ == "__main__":
+    asyncio.run(generate_newspaper_with_mcp())
+```
+
+## 🎯 Step 9: Lab Summary and Best Practices
+
+### 9.1 MCP Integration Summary
+
+**✅ Key Achievements:**
+
+1. **FastMCP Client Integration**: Seamless connection to MCP servers
+2. **Tavily MCP Tool**: Advanced web search with AI-powered analysis
+3. **Compatible Output Format**: MCP results formatted as ResearchSource objects
+4. **Three-Agent Integration**: MCP tools work with existing workflow
+5. **Performance Optimization**: Connection pooling and caching
+6. **Error Handling**: Robust fallback mechanisms and retry logic
+
+**🔧 Technical Components:**
+
+- **MCPClientService**: Core MCP client management
+- **TavilyMCPTool**: Tavily-specific research tool
+- **MCPToolRegistry**: Tool registration and lifecycle management
+- **MCPConnectionPool**: Performance optimization through connection pooling
+- **MCPCache**: Caching layer for improved response times
+
+### 9.2 MCP Benefits Realized
+
+**🚀 Enhanced Research Capabilities:**
+- **Real-time Web Search**: Access to current information via Tavily
+- **AI-Powered Analysis**: Intelligent content summarization and relevance scoring
+- **Source Credibility**: Automatic source reliability assessment
+- **Comprehensive Coverage**: Multi-source research including MCP providers
+
+**⚡ Performance Improvements:**
+- **Parallel Processing**: MCP calls alongside traditional research
+- **Connection Pooling**: Efficient resource utilization
+- **Intelligent Caching**: Reduced redundant API calls
+- **Concurrent Requests**: Multiple searches simultaneously
+
+**🎯 Quality Enhancements:**
+- **Higher Relevance Scores**: AI-powered relevance assessment
+- **Better Source Diversity**: Mix of traditional and MCP sources
+- **Enhanced Content Depth**: Richer research data for story writing
+- **Improved Editorial Decisions**: Better data for topic selection
+
+### 9.3 Best Practices for MCP Integration
+
+**Configuration Management:**
+1. **Secure API Keys**: Store in secrets.yaml, never in code
+2. **Environment Variables**: Use .env files for non-sensitive settings
+3. **Server Configuration**: Properly configure MCP server parameters
+4. **Timeout Settings**: Set appropriate timeouts for reliability
+
+**Performance Optimization:**
+1. **Connection Pooling**: Use connection pools for high-throughput scenarios
+2. **Caching Strategy**: Cache results with appropriate TTL values
+3. **Concurrent Requests**: Leverage async/await for parallel processing
+4. **Resource Limits**: Set reasonable limits on results and content length
+
+**Error Handling:**
+1. **Graceful Degradation**: Fall back to traditional methods if MCP fails
+2. **Retry Logic**: Implement exponential backoff for transient failures
+3. **Circuit Breaker**: Prevent cascading failures with circuit breaker pattern
+4. **Monitoring**: Log MCP performance and error rates
+
+**Integration Patterns:**
+1. **Compatible Interfaces**: Ensure MCP tools match existing tool interfaces
+2. **Unified Data Models**: Use consistent data models across all research sources
+3. **Seamless Fallback**: Transparent fallback when MCP services are unavailable
+4. **Quality Metrics**: Track and compare MCP vs traditional research quality
+
+## 🏆 Lab 5 Complete!
+
+Congratulations! You've successfully integrated Tavily MCP into your BobTimes newspaper system, creating a powerful hybrid research platform that combines traditional methods with cutting-edge MCP technology.
+
+### **🎯 Major Achievements:**
+
+1. **MCP Infrastructure**: Complete FastMCP client setup with Tavily integration
+2. **Seamless Integration**: MCP tools work transparently with existing three-agent workflow
+3. **Enhanced Research**: AI-powered web search with relevance scoring and content analysis
+4. **Performance Optimization**: Connection pooling, caching, and concurrent processing
+5. **Production Ready**: Robust error handling, monitoring, and fallback mechanisms
+
+### **📈 System Capabilities Enhanced:**
+
+- **Real-Time Research**: Access to current web information through Tavily
+- **AI-Powered Analysis**: Intelligent content summarization and source evaluation
+- **Hybrid Research**: Combination of YouTube, web search, scraping, and MCP sources
+- **Quality Metrics**: Enhanced relevance scoring and source credibility assessment
+- **Scalable Architecture**: Connection pooling and caching for high performance
+
+### **🔄 Workflow Excellence:**
+
+Your newspaper now operates with state-of-the-art research capabilities:
+1. **Research** → Multi-source discovery including MCP-powered web search
+2. **Editorial** → Enhanced decision making with richer research data
+3. **Writing** → Stories based on comprehensive, AI-analyzed research
+4. **Publication** → High-quality journalism with diverse, credible sources
+
+Your BobTimes newspaper now leverages the power of Model Context Protocol to deliver cutting-edge, research-driven journalism with unprecedented depth and accuracy!
+
+**🚀 Ready for Advanced Features?** Consider implementing:
+- Additional MCP servers (Claude, GPT, specialized research tools)
+- Real-time news monitoring and alerts via MCP
+- Multi-language research and translation through MCP
+- Advanced analytics and research quality metrics
+- Custom MCP servers for specialized domains
+
+🎉 **Lab 5 Complete!** Your newspaper now has MCP-powered research capabilities that rival professional newsrooms!
 ```
 ```
