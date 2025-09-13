@@ -44,7 +44,7 @@ class ReporterAgent(BaseAgent):
         self.reporter_id = reporter_id or f"reporter-{field.value}{sub_id}-001"
 
         # Initialize tool registry and prompt builder
-        self.tool_registry = ReporterToolRegistry()
+        self.tool_registry = ReporterToolRegistry(config_service)
         self.prompt_builder = ReporterPromptBuilder(self.tool_registry)
 
         # Create configuration with system prompt

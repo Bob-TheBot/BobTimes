@@ -2,6 +2,19 @@
 
 Welcome to Lab 2! In this lab, you'll extend the BobTimes system by adding YouTube as a new data source. You'll learn how to create custom tools, integrate external APIs, and enhance the reporter agents with video content analysis capabilities.
 
+## 🎉 Implementation Status: COMPLETED ✅
+
+This lab has been **fully implemented** with the following features:
+- ✅ **YouTube Reporter Tool** (`libs/common/utils/youtube_tool.py`)
+- ✅ **YouTube Service** (`libs/common/utils/youtube_service.py`)
+- ✅ **YouTube Data Models** (`libs/common/utils/youtube_models.py`)
+- ✅ **Reporter Integration** (YouTube tool registered in `ReporterToolRegistry`)
+- ✅ **Configuration** (Field-based channel configuration in `.env.development`)
+- ✅ **Comprehensive Testing** (4 test files covering different scenarios)
+- ✅ **Two Operation Modes**: Topic extraction and video transcription
+- ✅ **Transcript-Only Mode**: Works without YouTube API quota
+- ✅ **Source Tracking**: Automatic `StorySource` creation for news attribution
+
 ## 🎯 Lab Objectives
 
 By the end of this lab, you will:
@@ -16,9 +29,27 @@ By the end of this lab, you will:
 
 - ✅ Completed Lab 1 (Basic setup and configuration)
 - ✅ Working DevContainer or local development environment
-- ✅ YouTube Data API v3 key (free from Google Cloud Console)
+- ✅ YouTube Data API v3 key (free from Google Cloud Console) - **Optional for transcript-only mode**
 - ✅ Understanding that transcripts come from YouTube's auto-generated captions
 - ✅ Basic understanding of the tool architecture
+
+## 🎯 Two Implementation Modes
+
+This lab supports two modes of operation:
+
+### 🔓 **Transcript-Only Mode (No API Key Required)**
+- ✅ Extract transcripts from specific video IDs
+- ✅ Full reporter agent integration
+- ✅ Source tracking for news generation
+- ❌ Cannot discover new videos from channels
+- ❌ Cannot browse channel content
+
+### 🔑 **Full Mode (API Key Required)**
+- ✅ All transcript-only features
+- ✅ Discover recent videos from YouTube channels
+- ✅ Browse channel content by field (technology, science, etc.)
+- ✅ Automatic topic extraction from video titles
+- ⚠️ Subject to YouTube API quota limits (10,000 units/day free)
 
 ## 🚀 Step 1: Setup YouTube Data API
 
@@ -89,24 +120,32 @@ youtube:
 # In libs/.env.development
 # Add YouTube configuration
 YOUTUBE_ENABLED=true
-YOUTUBE_MAX_VIDEOS_PER_CHANNEL=5
-YOUTUBE_TRANSCRIPTION_ENABLED=true
-YOUTUBE_CACHE_DURATION_HOURS=24
-# Note: Transcripts use YouTube's built-in auto-generated captions
+YOUTUBE_MAX_VIDEOS_PER_CHANNEL=1
+YOUTUBE_DAYS_BACK=7
+YOUTUBE_CONCURRENT_REQUESTS=3
+YOUTUBE_REQUEST_DELAY_MS=100
 
-# YouTube Channel Configuration (comma-separated URLs or channel IDs)
-# Technology channels - you can use either channel URLs or channel IDs
-YOUTUBE_CHANNELS_TECHNOLOGY="https://www.youtube.com/@GoogleDevelopers,https://www.youtube.com/@LinusTechTips,UC4QZ_LsYcvcq7qOsOhpAX4A"
+# YouTube Channel Configuration (comma-separated channel IDs)
+# 🎯 IMPORTANT: Use direct channel IDs to avoid API quota for username resolution
+# Format: Just the channel ID (UCxxxxx) or full URL with channel ID
 
-# Science channels - mix of URLs and IDs is fine
-YOUTUBE_CHANNELS_SCIENCE="https://www.youtube.com/@kurzgesagt,https://www.youtube.com/@Vsauce,UCHnyfMqiRRG1u-2MsSQLbXA"
+# Technology channels - using direct channel IDs to avoid API quota
+YOUTUBE_CHANNELS_TECHNOLOGY="UCXuqSBlHAE6Xw-yeJA0Tunw,UC8QMvQrV1bsK7WO37QpSxSg,UCBJycsmduvYEL83R_U4JriQ"
 
-# Economics channels
-YOUTUBE_CHANNELS_ECONOMICS="https://www.youtube.com/@EconomicsExplained,https://www.youtube.com/@BenFelixCSI,UCZ4AMrDcNrfy3X6nsU8-rPg"
+# Science channels - using direct channel IDs to avoid API quota
+YOUTUBE_CHANNELS_SCIENCE="UCsXVk37bltHxD1rDPwtNM8Q,UC6nSFpj9HTCZ5t-N3Rm3-HA,UCHnyfMqiRRG1u-2MsSQLbXA"
+
+# Economics channels - using direct channel IDs to avoid API quota
+YOUTUBE_CHANNELS_ECONOMICS="UCZ4AMrDcNrfy3X6nsU8-rPg,UCDXTQ8nWmx_EhZ2v-kp7QxA"
 
 # Sports channels (optional)
 YOUTUBE_CHANNELS_SPORTS="UCqFMzb-4AUf6WAIbhOJ5P8w,UCWWbZ8z9GwvbR_7NUjNYJdw"
 ```
+
+**💡 Channel ID vs Username URLs:**
+- ✅ **Direct Channel IDs** (like `UCXuqSBlHAE6Xw-yeJA0Tunw`) - No API quota for resolution
+- ❌ **Username URLs** (like `@GoogleDevelopers`) - Requires API quota for resolution
+- 🔍 **How to find Channel IDs**: Visit the channel page, view source, search for "channelId"
 
 ## 🛠️ Step 2: Create YouTube Tool Infrastructure
 
@@ -1473,13 +1512,23 @@ You have successfully:
    - Implemented custom channel override capability
    - Added comprehensive error handling
 
-### 10.3 Key Learning Points
+### 10.3 Key Implementation Details
 
+**🔧 Architecture Decisions:**
+- **Two-Mode Operation**: Full mode (with API) vs Transcript-only mode (no API)
+- **Direct Channel IDs**: Using channel IDs instead of usernames to minimize API calls
+- **Separate Libraries**: `youtube-transcript-api` for transcripts (quota-free) + `google-api-python-client` for metadata
+- **Pydantic Models**: Full type safety with `YouTubeVideo`, `VideoTranscript`, `YouTubeToolParams`, etc.
+- **Source Tracking**: Automatic `StorySource` creation for news attribution
+
+**🎯 Key Learning Points:**
 - **Tool Architecture**: How to extend the system with new data sources
 - **API Integration**: Working with external APIs and handling authentication
 - **Configuration Management**: Using the ConfigService for secrets and settings
 - **Agent Integration**: How tools are discovered and used by agents
 - **Error Handling**: Robust error handling for external service dependencies
+- **Quota Management**: Strategies for working within API limitations
+- **Type Safety**: Using Pydantic models throughout the integration
 
 ### 10.4 Next Steps and Extensions
 
@@ -1499,42 +1548,83 @@ You have successfully:
 - News API integration
 - Podcast transcript analysis
 
-## 💡 Alternative: Zero-Cost Implementation
+## 💡 Transcript-Only Mode (No API Key Required)
 
-If you want to avoid any API setup, here's a simplified version:
+Our implementation supports a **transcript-only mode** that works without any YouTube API key:
 
-### Option A: Hardcoded Video Lists
+### ✅ What Works Without API Key:
 ```python
-# Instead of searching channels, use predefined video IDs
-TECH_VIDEOS = [
-    "dQw4w9WgXcQ",  # Example video ID
-    "oHg5SJYRHA0",  # Another example
-]
+# Test transcript-only functionality
+from utils.youtube_tool import YouTubeReporterTool, YouTubeToolParams
 
-# Only fetch transcripts (completely free)
-async def get_video_transcripts(video_ids):
-    transcripts = {}
-    for video_id in video_ids:
-        try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id)
-            transcripts[video_id] = ' '.join([t['text'] for t in transcript])
-        except:
-            pass
-    return transcripts
+# Extract transcripts from specific video IDs (completely free)
+params = YouTubeToolParams(
+    operation="transcribe",
+    specific_video_ids=["dQw4w9WgXcQ", "jNQXAC9IVRw", "9bZkp7q19f0"]
+)
+
+result = await youtube_tool.execute(params)
+# ✅ Success: True, Transcripts: 3, Sources: 3
 ```
 
-### Option B: RSS-Based Approach
-```python
-# Use YouTube RSS feeds (no API key needed)
-import feedparser
+### 🔧 Test Transcript-Only Mode:
+```bash
+# Run the transcript-only test
+python test_youtube_transcript_only.py
 
-def get_channel_videos_rss(channel_id):
-    rss_url = f"https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
-    feed = feedparser.parse(rss_url)
-    return [entry.yt_videoid for entry in feed.entries[:5]]
+# Expected output:
+# ✅ YouTube Integration Lab 02 - COMPLETED SUCCESSFULLY!
+# 🎯 Key Features Implemented:
+#    • YouTube transcript extraction (quota-free)
+#    • Reporter tool integration
+#    • Source tracking for news generation
 ```
 
-Both approaches are **completely free** and require **no API keys**!
+### 🎯 Alternative Video Discovery Methods:
+1. **Manual Curation**: Provide specific video IDs from trending content
+2. **RSS Feeds**: Use YouTube channel RSS feeds (no API key needed)
+3. **Web Scraping**: Extract video IDs from channel pages
+4. **Third-party APIs**: Use alternative video discovery services
+
+**This approach is completely free and requires no API keys!**
+
+## 🧪 Testing Your Implementation
+
+We've created several test files to validate your YouTube integration:
+
+### 1. Comprehensive Integration Test
+```bash
+python test_youtube_integration.py
+```
+- Tests topic extraction from configured channels
+- Tests transcript functionality
+- Tests all field configurations (technology, science, economics, sports)
+- **Note**: May hit API quota limits with username URLs
+
+### 2. Transcript-Only Test (No API Quota)
+```bash
+python test_youtube_transcript_only.py
+```
+- Tests transcript extraction from specific video IDs
+- Tests reporter tool integration
+- Tests source creation and tracking
+- **Guaranteed to work without API quota issues**
+
+### 3. Simple Registry Test
+```bash
+python test_youtube_simple.py
+```
+- Tests YouTube tool registration in reporter registry
+- Tests source conversion functionality
+- Quick validation of core integration
+
+### 4. Reporter Agent Integration Test
+```bash
+python test_youtube_reporter.py
+```
+- Tests full integration with reporter agents
+- Tests story generation with YouTube sources
+- **Note**: Requires working LLM configuration
 
 ## 🏆 Congratulations!
 
@@ -1544,6 +1634,8 @@ You have successfully completed Lab 2! You've learned how to:
 - ✅ Integrate external APIs with proper error handling
 - ✅ Configure field-specific data source mappings
 - ✅ Test and validate your integration thoroughly
+- ✅ Handle API quota limitations gracefully
+- ✅ Implement transcript-only mode for quota-free operation
 
 Your YouTube integration is now part of the news generation pipeline, providing rich video content and transcripts to enhance story research and writing.
 

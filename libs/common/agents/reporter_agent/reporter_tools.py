@@ -7,6 +7,7 @@ from typing import Any
 from agents.models.search_models import CleanedSearchResult
 from agents.models.story_models import StorySource
 from agents.tools.base_tool import BaseTool
+from core.config_service import ConfigService
 from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
 from pydantic import BaseModel, Field
@@ -268,11 +269,17 @@ Always verify the source credibility before using scraped content in stories.
 class ReporterToolRegistry:
     """Registry for reporter tools with automatic schema generation."""
 
-    def __init__(self) -> None:
+    def __init__(self, config_service: ConfigService | None = None) -> None:
         """Initialize the tool registry with reporter-specific tools."""
+        self.config_service = config_service or ConfigService()
+
+        # Import YouTube tool here to avoid circular imports
+        from utils.youtube_tool import YouTubeReporterTool
+
         self.tools = {
             "search": ReporterSearchTool(),
-            "scrape": ReporterScraperTool()
+            "scrape": ReporterScraperTool(),
+            "youtube_search": YouTubeReporterTool(self.config_service)  # Add YouTube tool
         }
 
     def get_all_tools(self) -> list[BaseTool]:
@@ -308,10 +315,10 @@ class ReporterToolRegistry:
     @staticmethod
     def convert_search_results_to_sources(search_results: list[CleanedSearchResult]) -> list[StorySource]:
         """Convert search results to StorySource objects.
-        
+
         Args:
             search_results: List of CleanedSearchResult objects
-            
+
         Returns:
             List of StorySource objects
         """
@@ -327,3 +334,20 @@ class ReporterToolRegistry:
                 story_sources.append(source)
 
         return story_sources
+
+    @staticmethod
+    def convert_youtube_results_to_sources(youtube_result: Any) -> list[StorySource]:
+        """Convert YouTube tool results to StorySource objects.
+
+        Args:
+            youtube_result: YouTubeToolResult object
+
+        Returns:
+            List of StorySource objects
+        """
+        # Use Pydantic model validation instead of hasattr
+        try:
+            return youtube_result.sources if youtube_result.sources else []
+        except AttributeError:
+            logger.warning("YouTubeToolResult missing sources field")
+            return []
