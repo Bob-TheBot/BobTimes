@@ -69,33 +69,18 @@ If you prefer not to use Google APIs, you can modify the lab to:
 - Skip video metadata and channel information
 - This approach requires **zero API keys** and has **zero costs**
 
-### 1.2 Configure API Keys
+### 1.2 Configure API Keys and Settings
 
-Add your API keys to the secrets file:
+Add your API key to the secrets file and channel configuration to the environment file:
 
 ```yaml
 # In libs/common/secrets.yaml
 llm_providers:
   # ... existing providers ...
 
-# YouTube Data Source Configuration
+# YouTube Data Source Configuration (API Key only)
 youtube:
   api_key: "your_youtube_data_api_key_here"
-  
-# Example Channel Lists (Users will provide their own)
-youtube_channels:
-  # These are just examples - users will specify channels in tool parameters
-  example_tech_channels:
-    - "UC_x5XG1OV2P6uZZ5FSM9Ttw"  # Google Developers
-    - "UCXuqSBlHAE6Xw-yeJA0Tunw"  # Linus Tech Tips
-
-  example_science_channels:
-    - "UCsXVk37bltHxD1rDPwtNM8Q"  # Kurzgesagt
-    - "UC6nSFpj9HTCZ5t-N3Rm3-HA"  # Vsauce
-
-  example_economics_channels:
-    - "UCfM3zsQsOnfWNUppiycmBuw"  # Economics Explained
-    - "UC0p5jTq6Xx_DosDFxVXnWaQ"  # Ben Felix
 ```
 
 ### 1.3 Update Environment Configuration
@@ -108,6 +93,19 @@ YOUTUBE_MAX_VIDEOS_PER_CHANNEL=5
 YOUTUBE_TRANSCRIPTION_ENABLED=true
 YOUTUBE_CACHE_DURATION_HOURS=24
 # Note: Transcripts use YouTube's built-in auto-generated captions
+
+# YouTube Channel Configuration (comma-separated URLs or channel IDs)
+# Technology channels - you can use either channel URLs or channel IDs
+YOUTUBE_CHANNELS_TECHNOLOGY="https://www.youtube.com/@GoogleDevelopers,https://www.youtube.com/@LinusTechTips,UC4QZ_LsYcvcq7qOsOhpAX4A"
+
+# Science channels - mix of URLs and IDs is fine
+YOUTUBE_CHANNELS_SCIENCE="https://www.youtube.com/@kurzgesagt,https://www.youtube.com/@Vsauce,UCHnyfMqiRRG1u-2MsSQLbXA"
+
+# Economics channels
+YOUTUBE_CHANNELS_ECONOMICS="https://www.youtube.com/@EconomicsExplained,https://www.youtube.com/@BenFelixCSI,UCZ4AMrDcNrfy3X6nsU8-rPg"
+
+# Sports channels (optional)
+YOUTUBE_CHANNELS_SPORTS="UCqFMzb-4AUf6WAIbhOJ5P8w,UCWWbZ8z9GwvbR_7NUjNYJdw"
 ```
 
 ## 🛠️ Step 2: Create YouTube Tool Infrastructure
@@ -133,6 +131,14 @@ from enum import StrEnum
 from typing import Optional
 
 from pydantic import BaseModel, Field
+
+
+class YouTubeField(StrEnum):
+    """YouTube content fields."""
+    TECHNOLOGY = "technology"
+    SCIENCE = "science"
+    ECONOMICS = "economics"
+    SPORTS = "sports"
 
 
 class VideoQuality(StrEnum):
@@ -234,7 +240,7 @@ from core.config_service import ConfigService
 from core.logging_service import get_logger
 from .youtube_models import (
     YouTubeVideo, VideoTranscript, YouTubeChannelInfo,
-    YouTubeSearchParams, YouTubeSearchResult, TranscriptionMethod
+    YouTubeSearchParams, YouTubeSearchResult, TranscriptionMethod, YouTubeField
 )
 
 logger = get_logger(__name__)
@@ -242,19 +248,96 @@ logger = get_logger(__name__)
 
 class YouTubeService:
     """Service for interacting with YouTube Data API and transcripts."""
-    
+
     def __init__(self, config_service: ConfigService):
         """Initialize YouTube service with configuration."""
         self.config_service = config_service
         self.api_key = config_service.get("youtube.api_key")
-        
+
         if not self.api_key:
             raise ValueError("YouTube API key not found in configuration")
-        
+
         # Initialize YouTube API client
         self.youtube = build('youtube', 'v3', developerKey=self.api_key)
-        
+
         logger.info("YouTube service initialized successfully")
+
+    def get_channels_for_field(self, field: YouTubeField) -> list[str]:
+        """Get channel IDs for a specific field from environment configuration.
+
+        Supports both YouTube URLs and channel IDs. URLs are automatically converted to channel IDs.
+        """
+        env_key = f"youtube_channels_{field.value}"
+        channels_str = self.config_service.get(env_key, "")
+
+        if not channels_str:
+            logger.warning(f"No channels configured for field: {field}")
+            return []
+
+        # Split comma-separated entries and clean whitespace
+        raw_channels = [channel.strip() for channel in channels_str.split(",") if channel.strip()]
+
+        # Convert URLs to channel IDs
+        channel_ids = []
+        for channel in raw_channels:
+            channel_id = self._extract_channel_id(channel)
+            if channel_id:
+                channel_ids.append(channel_id)
+            else:
+                logger.warning(f"Could not extract channel ID from: {channel}")
+
+        logger.info(f"Found {len(channel_ids)} valid channels for field {field}")
+        return channel_ids
+
+    def _extract_channel_id(self, channel_input: str) -> str | None:
+        """Extract channel ID from URL or return as-is if already a channel ID."""
+        import re
+
+        # If it's already a channel ID (starts with UC and is 24 chars), return as-is
+        if channel_input.startswith("UC") and len(channel_input) == 24:
+            return channel_input
+
+        # Extract from various YouTube URL formats
+        url_patterns = [
+            r"youtube\.com/channel/([a-zA-Z0-9_-]{24})",  # /channel/UCxxxxx
+            r"youtube\.com/@([a-zA-Z0-9_.-]+)",           # /@username
+            r"youtube\.com/c/([a-zA-Z0-9_.-]+)",          # /c/username
+            r"youtube\.com/user/([a-zA-Z0-9_.-]+)",       # /user/username
+        ]
+
+        for pattern in url_patterns:
+            match = re.search(pattern, channel_input)
+            if match:
+                extracted = match.group(1)
+                # If it's a direct channel ID, return it
+                if extracted.startswith("UC") and len(extracted) == 24:
+                    return extracted
+                # Otherwise, it's a username that needs to be resolved via API
+                return self._resolve_username_to_channel_id(extracted)
+
+        logger.warning(f"Could not parse channel input: {channel_input}")
+        return None
+
+    def _resolve_username_to_channel_id(self, username: str) -> str | None:
+        """Resolve a username to channel ID using YouTube API."""
+        try:
+            # Try to search for the channel by username
+            response = self.youtube.search().list(
+                part='snippet',
+                q=username,
+                type='channel',
+                maxResults=1
+            ).execute()
+
+            if response['items']:
+                return response['items'][0]['snippet']['channelId']
+
+            logger.warning(f"Could not resolve username to channel ID: {username}")
+            return None
+
+        except Exception as e:
+            logger.error(f"Error resolving username {username}: {e}")
+            return None
     
     async def search_channel_videos(self, params: YouTubeSearchParams) -> YouTubeSearchResult:
         """Search for recent videos from specified channels."""
@@ -466,7 +549,7 @@ from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
 from pydantic import BaseModel, Field
 
-from .youtube_models import YouTubeSearchParams, YouTubeSearchResult, TranscriptionMethod
+from .youtube_models import YouTubeSearchParams, YouTubeSearchResult, TranscriptionMethod, YouTubeField
 from .youtube_service import YouTubeService
 
 logger = get_logger(__name__)
@@ -474,7 +557,14 @@ logger = get_logger(__name__)
 
 class YouTubeToolParams(BaseModel):
     """Parameters for YouTube tool operations."""
-    channel_ids: list[str] = Field(description="User-provided list of YouTube channel IDs")
+    channel_ids: list[str] = Field(
+        default_factory=list,
+        description="User-provided list of YouTube channel URLs or IDs (optional if field is specified)"
+    )
+    field: YouTubeField | None = Field(
+        default=None,
+        description="Field name to get channels from env config"
+    )
     max_videos_per_channel: int = Field(default=3, description="Max videos per channel")
     days_back: int = Field(default=7, description="Days to look back for videos")
     operation: str = Field(default="topics", description="Operation: 'topics' or 'transcribe'")
@@ -514,14 +604,20 @@ PARAMETER SCHEMA:
 {YouTubeToolParams.model_json_schema()}
 
 CORRECT USAGE EXAMPLES:
-# Extract topics from channels
-{{"channel_ids": ["UC_x5XG1OV2P6uZZ5FSM9Ttw", "UCXuqSBlHAE6Xw-yeJA0Tunw"], "operation": "topics", "days_back": 7}}
+# Extract topics from specific channels (URLs or IDs)
+{{"channel_ids": ["https://www.youtube.com/@GoogleDevelopers", "https://www.youtube.com/@LinusTechTips"], "operation": "topics", "days_back": 7}}
+
+# Extract topics from field-configured channels
+{{"field": "technology", "operation": "topics", "days_back": 7}}
 
 # Transcribe specific videos for content
-{{"channel_ids": [], "operation": "transcribe", "specific_video_ids": ["dQw4w9WgXcQ", "oHg5SJYRHA0"]}}
+{{"operation": "transcribe", "specific_video_ids": ["dQw4w9WgXcQ", "oHg5SJYRHA0"]}}
 
-# Get recent videos and transcribe them
-{{"channel_ids": ["UCsXVk37bltHxD1rDPwtNM8Q"], "operation": "transcribe", "max_videos_per_channel": 2}}
+# Get recent videos from field and transcribe them
+{{"field": "science", "operation": "transcribe", "max_videos_per_channel": 2}}
+
+# Mix of direct channels and field channels
+{{"channel_ids": ["https://www.youtube.com/@3Blue1Brown"], "field": "science", "operation": "topics"}}
 
 USAGE GUIDELINES:
 - ALWAYS provide channel_ids list (user-specified channels)
@@ -567,13 +663,33 @@ This tool supports two workflows:
             )
 
         try:
-            # Validate channel IDs provided by user
-            if not params.channel_ids and params.operation == "topics":
+            # Determine channel IDs to use
+            channel_ids = params.channel_ids.copy() if params.channel_ids else []
+
+            # If field is specified, get channels from environment configuration
+            if params.field is not None:
+                field_channels = self.youtube_service.get_channels_for_field(params.field)
+                channel_ids.extend(field_channels)
+
+            # Convert any URLs to channel IDs
+            resolved_channel_ids = []
+            for channel in channel_ids:
+                channel_id = self.youtube_service._extract_channel_id(channel)
+                if channel_id:
+                    resolved_channel_ids.append(channel_id)
+                else:
+                    logger.warning(f"Could not resolve channel: {channel}")
+
+            # Validate we have channels to work with
+            if not resolved_channel_ids and params.operation == "topics":
                 return YouTubeToolResult(
                     success=False,
                     operation=params.operation,
-                    error="No channel IDs provided. Please specify channel_ids parameter."
+                    error="No valid channel IDs found. Please specify either channel_ids parameter or field parameter."
                 )
+
+            # Update params with resolved channel IDs
+            params.channel_ids = resolved_channel_ids
 
             # Handle different operations
             if params.operation == "topics":
@@ -822,9 +938,12 @@ class ReporterToolRegistry:
         Returns:
             List of StorySource objects
         """
-        if hasattr(youtube_result, "sources") and youtube_result.sources:
-            return youtube_result.sources
-        return []
+        # Use Pydantic model validation instead of hasattr
+        try:
+            return youtube_result.sources if youtube_result.sources else []
+        except AttributeError:
+            logger.warning("YouTubeToolResult missing sources field")
+            return []
 
 # Update the reporter executor to handle YouTube sources
 # In libs/common/agents/reporter_agent/reporter_executor.py, add this logic:
@@ -834,7 +953,7 @@ async def _execute_tool_call(self, tool_call: StoryToolCall, state: ReporterStat
     # ... existing code ...
 
     # After executing the tool, check if it's YouTube tool and extract sources
-    if tool_call.name == "youtube_search" and hasattr(result, "sources"):
+    if tool_call.name == "youtube_search" and isinstance(result, YouTubeToolResult):
         # Add YouTube sources to state
         youtube_sources = ReporterToolRegistry.extract_youtube_sources(result)
         for source in youtube_sources:
@@ -859,6 +978,7 @@ Create a test script to verify the YouTube integration works:
 import asyncio
 from core.config_service import ConfigService
 from utils.youtube_tool import YouTubeReporterTool, YouTubeToolParams
+from utils.youtube_models import YouTubeField
 
 
 async def test_youtube_tool():
@@ -866,10 +986,10 @@ async def test_youtube_tool():
     config_service = ConfigService()
     youtube_tool = YouTubeReporterTool(config_service)
 
-    # Test 1: Extract topics from channels
+    # Test 1: Extract topics from field-configured channels
     print("🔍 Testing Topic Extraction...")
     topic_params = YouTubeToolParams(
-        channel_ids=["UC_x5XG1OV2P6uZZ5FSM9Ttw", "UCXuqSBlHAE6Xw-yeJA0Tunw"],
+        field=YouTubeField.TECHNOLOGY,
         operation="topics",
         days_back=7,
         max_videos_per_channel=3
@@ -903,7 +1023,6 @@ async def test_youtube_tool():
     # Test 2: Transcribe specific videos
     print("\n🎬 Testing Video Transcription...")
     transcribe_params = YouTubeToolParams(
-        channel_ids=[],
         operation="transcribe",
         specific_video_ids=["dQw4w9WgXcQ"]  # Example video ID
     )
@@ -938,31 +1057,38 @@ python test_youtube_integration.py
 
 ### 6.1 Update Channel Configuration
 
-Add more comprehensive channel lists to your `secrets.yaml`:
+Add more comprehensive channel lists to your `.env.development` file:
 
-```yaml
-# Enhanced YouTube channel configuration
-youtube_channels:
-  technology:
-    - "UC_x5XG1OV2P6uZZ5FSM9Ttw"  # Google Developers
-    - "UCXuqSBlHAE6Xw-yeJA0Tunw"  # Linus Tech Tips
-    - "UC4QZ_LsYcvcq7qOsOhpAX4A"  # CodeBullet
-    - "UCld68syR8Wi-GY_n4CaoJGA"  # Brodie Robertson (Linux/Tech)
-    - "UCVls1GmFKf6WlTraIb_IaJg"  # DistroTube
+```bash
+# Enhanced YouTube channel configuration in libs/.env.development
+# Technology channels (comma-separated)
+YOUTUBE_CHANNELS_TECHNOLOGY="UC_x5XG1OV2P6uZZ5FSM9Ttw,UCXuqSBlHAE6Xw-yeJA0Tunw,UC4QZ_LsYcvcq7qOsOhpAX4A,UCld68syR8Wi-GY_n4CaoJGA,UCVls1GmFKf6WlTraIb_IaJg"
 
-  science:
-    - "UCsXVk37bltHxD1rDPwtNM8Q"  # Kurzgesagt – In a Nutshell
-    - "UC6nSFpj9HTCZ5t-N3Rm3-HA"  # Vsauce
-    - "UCHnyfMqiRRG1u-2MsSQLbXA"  # Veritasium
-    - "UC7_gcs09iThXybpVgjHZ_7g"  # PBS Space Time
-    - "UCtYLUTtgS3k1Fg4y5tAhLbw"  # Statquest
+# Science channels (comma-separated)
+YOUTUBE_CHANNELS_SCIENCE="UCsXVk37bltHxD1rDPwtNM8Q,UC6nSFpj9HTCZ5t-N3Rm3-HA,UCHnyfMqiRRG1u-2MsSQLbXA,UC7_gcs09iThXybpVgjHZ_7g,UCtYLUTtgS3k1Fg4y5tAhLbw"
 
-  economics:
-    - "UCfM3zsQsOnfWNUppiycmBuw"  # Economics Explained
-    - "UC0p5jTq6Xx_DosDFxVXnWaQ"  # Ben Felix
-    - "UCZ4AMrDcNrfy3X6nsU8-rPg"  # Economics in Many Lessons
-    - "UC-uWLJbmXH1KbCPHmtG-3MQ"  # Marginal Revolution University
-    - "UCcunJy13-KFJNd_DkqkUeEg"  # CrashCourse Economics
+# Economics channels (comma-separated)
+YOUTUBE_CHANNELS_ECONOMICS="UCfM3zsQsOnfWNUppiycmBuw,UC0p5jTq6Xx_DosDFxVXnWaQ,UCZ4AMrDcNrfy3X6nsU8-rPg,UC-uWLJbmXH1KbCPHmtG-3MQ,UCcunJy13-KFJNd_DkqkUeEg"
+
+# Sports channels (comma-separated, optional)
+YOUTUBE_CHANNELS_SPORTS="UCqFMzb-4AUf6WAIbhOJ5P8w,UCWWbZ8z9GwvbR_7NUjNYJdw"
+
+# Channel name mapping for reference (comments only):
+# UC_x5XG1OV2P6uZZ5FSM9Ttw = Google Developers
+# UCXuqSBlHAE6Xw-yeJA0Tunw = Linus Tech Tips
+# UC4QZ_LsYcvcq7qOsOhpAX4A = CodeBullet
+# UCld68syR8Wi-GY_n4CaoJGA = Brodie Robertson (Linux/Tech)
+# UCVls1GmFKf6WlTraIb_IaJg = DistroTube
+# UCsXVk37bltHxD1rDPwtNM8Q = Kurzgesagt – In a Nutshell
+# UC6nSFpj9HTCZ5t-N3Rm3-HA = Vsauce
+# UCHnyfMqiRRG1u-2MsSQLbXA = Veritasium
+# UC7_gcs09iThXybpVgjHZ_7g = PBS Space Time
+# UCtYLUTtgS3k1Fg4y5tAhLbw = Statquest
+# UCfM3zsQsOnfWNUppiycmBuw = Economics Explained
+# UC0p5jTq6Xx_DosDFxVXnWaQ = Ben Felix
+# UCZ4AMrDcNrfy3X6nsU8-rPg = Economics in Many Lessons
+# UC-uWLJbmXH1KbCPHmtG-3MQ = Marginal Revolution University
+# UCcunJy13-KFJNd_DkqkUeEg = CrashCourse Economics
 ```
 
 ### 6.2 Test Different Fields
@@ -1066,14 +1192,14 @@ Update your environment configuration to include caching:
 
 ```bash
 # In libs/.env.development
-# YouTube caching settings
+# YouTube caching settings (cache API responses to avoid rate limits)
 YOUTUBE_CACHE_ENABLED=true
-YOUTUBE_CACHE_DURATION_HOURS=6
-YOUTUBE_CACHE_MAX_VIDEOS=100
+YOUTUBE_CACHE_DURATION_HOURS=6  # How long to cache video/channel data before refreshing
+YOUTUBE_CACHE_MAX_VIDEOS=100    # Maximum number of videos to cache per field
 
 # Performance settings
-YOUTUBE_CONCURRENT_REQUESTS=3
-YOUTUBE_REQUEST_DELAY_MS=100
+YOUTUBE_CONCURRENT_REQUESTS=3   # Max concurrent API requests
+YOUTUBE_REQUEST_DELAY_MS=100    # Delay between requests to avoid rate limiting
 ```
 
 ### 8.2 Create Channel Management Script
@@ -1087,6 +1213,7 @@ Create a utility script to manage and validate YouTube channels:
 import asyncio
 from core.config_service import ConfigService
 from utils.youtube_service import YouTubeService
+from utils.youtube_models import YouTubeField
 
 
 async def validate_channels():
@@ -1094,11 +1221,18 @@ async def validate_channels():
     config_service = ConfigService()
     youtube_service = YouTubeService(config_service)
 
-    channels_config = config_service.get("youtube_channels", {})
+    # Get all field configurations from environment
+    fields = [YouTubeField.TECHNOLOGY, YouTubeField.SCIENCE, YouTubeField.ECONOMICS, YouTubeField.SPORTS]
 
     print("🔍 Validating YouTube channels...")
 
-    for field, channel_ids in channels_config.items():
+    for field in fields:
+        channel_ids = youtube_service.get_channels_for_field(field)
+
+        if not channel_ids:
+            print(f"\n📂 {field.upper()} Field: No channels configured")
+            continue
+
         print(f"\n📂 {field.upper()} Field:")
 
         for channel_id in channel_ids:
@@ -1117,11 +1251,18 @@ async def find_recent_videos():
     config_service = ConfigService()
     youtube_service = YouTubeService(config_service)
 
-    channels_config = config_service.get("youtube_channels", {})
+    # Get all field configurations from environment
+    fields = [YouTubeField.TECHNOLOGY, YouTubeField.SCIENCE, YouTubeField.ECONOMICS, YouTubeField.SPORTS]
 
     print("📺 Recent videos from all channels:")
 
-    for field, channel_ids in channels_config.items():
+    for field in fields:
+        channel_ids = youtube_service.get_channels_for_field(field)
+
+        if not channel_ids:
+            print(f"\n🎯 {field.upper()} Field: No channels configured")
+            continue
+
         print(f"\n🎯 {field.upper()} Field:")
 
         for channel_id in channel_ids:
@@ -1180,6 +1321,7 @@ import asyncio
 from datetime import datetime
 from core.config_service import ConfigService
 from utils.youtube_tool import YouTubeReporterTool, YouTubeToolParams
+from utils.youtube_models import YouTubeField
 
 
 async def comprehensive_test():
@@ -1193,10 +1335,10 @@ async def comprehensive_test():
     # Test 1: Basic functionality
     print("\n1️⃣ Testing basic YouTube search...")
     params = YouTubeToolParams(
-        field="technology",
+        field=YouTubeField.TECHNOLOGY,
+        operation="transcribe",
         days_back=7,
-        max_videos_per_channel=2,
-        include_transcripts=True
+        max_videos_per_channel=2
     )
 
     result = await youtube_tool.execute(params)
@@ -1211,8 +1353,8 @@ async def comprehensive_test():
     # Test 2: Custom channels
     print("\n2️⃣ Testing custom channel search...")
     custom_params = YouTubeToolParams(
-        field="technology",
-        custom_channels=["UC_x5XG1OV2P6uZZ5FSM9Ttw"],  # Google Developers
+        channel_ids=["UC_x5XG1OV2P6uZZ5FSM9Ttw"],  # Google Developers
+        operation="topics",
         days_back=14,
         max_videos_per_channel=1
     )
@@ -1226,12 +1368,12 @@ async def comprehensive_test():
 
     # Test 3: All fields
     print("\n3️⃣ Testing all fields...")
-    for field in ["technology", "science", "economics"]:
+    for field in [YouTubeField.TECHNOLOGY, YouTubeField.SCIENCE, YouTubeField.ECONOMICS, YouTubeField.SPORTS]:
         field_params = YouTubeToolParams(
             field=field,
+            operation="topics",
             days_back=5,
-            max_videos_per_channel=1,
-            include_transcripts=False  # Faster test
+            max_videos_per_channel=1
         )
 
         field_result = await youtube_tool.execute(field_params)
