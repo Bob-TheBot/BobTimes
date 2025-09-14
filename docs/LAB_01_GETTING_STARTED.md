@@ -10,6 +10,7 @@ By the end of this lab, you will:
 - ✅ Set up image generation with fallback options
 - ✅ Generate your first minimal newspaper
 - ✅ Understand the basic workflow and data models
+- ✅ Make agents aware of the current date
 
 ## 📋 Prerequisites
 
@@ -831,6 +832,185 @@ field_requests = [
 
 Each field generates 1 story by default, giving you a 3-story newspaper.
 
+## 🗓️ Step 14: Making Agents Date-Aware
+
+### 14.1 The Challenge
+
+By default, AI agents don't know the current date, which can lead to outdated or irrelevant news stories. Your task is to ensure all agents (reporters and editors) are aware of the current date and use it appropriately in their work.
+
+### 14.2 Understanding the Problem
+
+Test the current behavior:
+
+```python
+# Test current date awareness
+python -c "
+import asyncio
+from agents.reporter_agent import ReporterAgent
+from agents.types import ReporterField, TechnologySubSection
+from core.config_service import ConfigService
+
+async def test_date_awareness():
+    config = ConfigService()
+    agent = ReporterAgent(config=config)
+
+    # Ask agent about current date
+    response = await agent.execute(
+        task='What is today\'s date? Include it in a brief tech news summary.',
+        field=ReporterField.TECHNOLOGY,
+        sub_section=TechnologySubSection.AI_TOOLS
+    )
+    print('Agent response:', response.content if hasattr(response, 'content') else response)
+
+asyncio.run(test_date_awareness())
+"
+```
+
+**Expected Issue:** The agent likely won't know the current date or will provide an incorrect/outdated date.
+
+### 14.3 Exploration Hints
+
+Look at these key areas in the codebase:
+
+**Agent System Prompts:**
+```bash
+# Find where system prompts are defined
+find . -name "*.py" -exec grep -l "system.*prompt\|SystemMessage" {} \;
+```
+
+**Agent Configuration:**
+```bash
+# Look for agent initialization and configuration
+find . -name "*agent*.py" -type f
+```
+
+**Date/Time Utilities:**
+```bash
+# Check if there are existing date utilities
+find . -name "*.py" -exec grep -l "datetime\|date\|time" {} \;
+```
+
+### 14.4 Implementation Direction
+
+You'll need to modify the agent system to include current date information. Consider these approaches:
+
+**Approach 1: System Prompt Enhancement**
+```python
+# Example system prompt modification (find the actual location)
+system_prompt = f"""
+You are a professional news reporter for Bob Times.
+Current date and time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')}
+
+When writing stories, always consider:
+- Is this information current as of {datetime.now().strftime('%B %d, %Y')}?
+- Are there recent developments since this date?
+- Include temporal context in your reporting
+"""
+```
+
+**Approach 2: Context Injection**
+```python
+# Example context addition to agent calls
+context = {
+    "current_date": datetime.now().isoformat(),
+    "formatted_date": datetime.now().strftime('%B %d, %Y'),
+    "day_of_week": datetime.now().strftime('%A')
+}
+```
+
+**Approach 3: Tool Enhancement**
+```python
+# Example tool that provides date information
+class DateTool:
+    def get_current_date(self) -> dict:
+        now = datetime.now()
+        return {
+            "iso_date": now.isoformat(),
+            "formatted": now.strftime('%B %d, %Y'),
+            "day": now.strftime('%A'),
+            "time_utc": now.strftime('%H:%M:%S UTC')
+        }
+```
+
+### 14.5 Testing Your Implementation
+
+After implementing your solution, test it:
+
+```python
+# Test date-aware story generation
+python -c "
+import asyncio
+from generate_newpaper import generate_single_issue
+from agents.types import ReporterField, TechnologySubSection
+
+async def test_date_aware_story():
+    print('Generating date-aware story...')
+    exit_code = await generate_single_issue(
+        field=ReporterField.TECHNOLOGY,
+        sub_section=TechnologySubSection.AI_TOOLS
+    )
+    print(f'Generation completed: {exit_code}')
+
+asyncio.run(test_date_aware_story())
+"
+```
+
+**Look for these improvements in the generated story:**
+- [ ] Current date mentioned or referenced
+- [ ] Temporal context (e.g., "this week", "recently", "as of today")
+- [ ] Recent developments prioritized
+- [ ] Time-sensitive language used appropriately
+
+### 14.6 Verification Questions
+
+After implementation, your agents should be able to answer:
+
+```python
+# Create a verification script
+test_questions = [
+    "What is today's date?",
+    "What day of the week is it?",
+    "Write a news headline that includes today's date",
+    "Is this information current as of today?"
+]
+
+# Test each question with your modified agents
+```
+
+### 14.7 Advanced Considerations
+
+Once basic date awareness works, consider:
+
+**Time Zones:**
+- Should agents work in UTC or local time?
+- How to handle global news across time zones?
+
+**Date Formatting:**
+- Consistent date formats across all stories
+- User-friendly vs. machine-readable formats
+
+**Temporal Context:**
+- "Breaking news" vs. "developing story" language
+- Age-appropriate references ("yesterday", "this morning")
+
+### 14.8 Common Pitfalls to Avoid
+
+- **Hardcoding dates** - Always use dynamic date generation
+- **Timezone confusion** - Be explicit about timezone usage
+- **Inconsistent formatting** - Standardize date formats across agents
+- **Performance impact** - Don't call datetime.now() excessively
+
+### 14.9 Success Criteria
+
+Your implementation is successful when:
+- [ ] ✅ Agents consistently know the current date
+- [ ] ✅ Stories include appropriate temporal context
+- [ ] ✅ Date information is accurate and formatted consistently
+- [ ] ✅ No performance degradation in story generation
+- [ ] ✅ Both reporter and editor agents are date-aware
+
+**Hint:** Look for where agent prompts are constructed and where agent context is established. The solution might involve modifying system prompts, adding context variables, or creating date-aware tools.
+
 ## 🏁 Final Verification Checklist
 
 Before moving to the next lab, ensure:
@@ -843,6 +1023,7 @@ Before moving to the next lab, ensure:
 - [ ] ✅ Images are saved to `data/images/`
 - [ ] ✅ Logs show successful completion
 - [ ] ✅ No critical errors in output
+- [ ] ✅ **Agents are aware of current date and use it appropriately**
 
 ## 🚀 Ready for Lab 2?
 
