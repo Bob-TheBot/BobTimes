@@ -230,6 +230,27 @@ You have access to the following tools. Use the EXACT tool names shown below:
 
 {self.tool_registry.format_tools_for_prompt()}
 
+## YouTube Tool Strategy
+
+🎯 **IMPORTANT**: The youtube_search tool is your PRIMARY source for discovering trending topics in your field!
+
+**Why YouTube channels matter:**
+- Industry experts share insights before they hit mainstream news
+- Real-time discussions about emerging trends and technologies
+- Specialized content creators focus on your exact field/subsection
+- Community reactions and expert analysis provide story angles
+
+**When to use youtube_search:**
+- **ALWAYS** for topic discovery tasks - use it FIRST before search tool
+- For finding expert perspectives on breaking news
+- To discover emerging trends in your specialized area
+- To get technical insights and community reactions
+
+**Your configured channels are field/subsection-specific:**
+- Use your field and subsection parameters when calling youtube_search
+- These channels are specifically curated for your reporting beat
+- They provide insider knowledge that mainstream news sources miss
+
 # OUTPUT FORMAT
 You must respond with an AgentResponse object:
 {AgentResponse.model_json_schema()}
@@ -286,24 +307,45 @@ The response must contain either:
 
     def _build_find_topics_instructions(self, task: ReporterTask, state: ReporterState) -> list[str]:
         """Build instructions for find topics task."""
-        instructions = ["# INSTRUCTIONS FOR FIND_TOPICS:"]
+        instructions = [
+            "# INSTRUCTIONS FOR FIND_TOPICS:",
+            "",
+            f"🎯 Your specialty: {task.field.value}" + (f" - {task.sub_section.value}" if task.sub_section else ""),
+            "🎥 PRIORITY: Use youtube_search tool FIRST - your specialized channels have the best trending topics!",
+            ""
+        ]
 
-        if state.sources:
-            # We already have search results, now extract topics
+        # Check what sources we have to determine next steps
+        youtube_sources = [s for s in state.sources if 'youtube.com' in s.url]
+        search_sources = [s for s in state.sources if 'youtube.com' not in s.url]
+
+        if len(youtube_sources) > 0 and len(search_sources) > 0:
+            # We have both YouTube and search sources - get topics from memory
+            from agents.shared_memory_store import get_shared_memory_store
+            memory_store = get_shared_memory_store()
+            field_memories = memory_store.get_memories_by_field(task.field.value)
+            available_topics = [memory.topic_name for memory in field_memories]
+
             instructions.extend(
                 [
                     "",
-                    "🚨 STOP! You have sources. Return TopicList NOW!",
+                    "🎯 EXCELLENT! You have sources from BOTH YouTube and search tools.",
+                    f"📊 YouTube sources: {len(youtube_sources)} | Search sources: {len(search_sources)}",
                     "",
-                    f"Extract {task.description.split()[-1] if 'topics' in task.description else '5'} topics from the source titles above.",
+                    "🚨 NOW return TopicList using EXACT topic names from memory!",
+                    "",
+                    f"Available topics stored in memory for {task.field.value}:",
+                    *[f"  - {topic}" for topic in available_topics],
+                    "",
+                    f"Use these EXACT topic names (do not modify or rephrase them).",
                     f"Set field='{task.field.value}' and sub_section='{task.sub_section.value if task.sub_section else None}'.",
                     "",
                     "Return EXACTLY this structure:",
                     "{",
-                    '  "reasoning": "Found topics from search results",',
+                    '  "reasoning": "Using exact topic names from SharedMemoryStore",',
                     '  "topic_list": {',
-                    '    "reasoning": "Extracted from available sources", ',
-                    '    "topics": ["topic1", "topic2", "topic3"],',
+                    '    "reasoning": "Retrieved topics from memory with validated content", ',
+                    f'    "topics": {available_topics[:5]},',  # Use actual topic names, limit to 5
                     f'    "field": "{task.field.value}",',
                     f'    "sub_section": "{task.sub_section.value if task.sub_section else None}"',
                     "  },",
@@ -314,9 +356,43 @@ The response must contain either:
                     "DO NOT call tools. DO NOT provide anything else. Just return the TopicList.",
                 ]
             )
+        elif len(youtube_sources) > 0 and len(search_sources) == 0:
+            # We have YouTube sources but no search sources - get search sources too
+            instructions.extend([
+                "",
+                f"✅ Great! You have {len(youtube_sources)} YouTube sources with insider perspectives.",
+                "🔍 Now use search tool to get broader news coverage for complete topic discovery.",
+                '   - Use: {"query": "trending technology news today", "search_type": "news", "time_limit": "w"}',
+                ""
+            ])
+        elif len(search_sources) > 0 and len(youtube_sources) == 0:
+            # We have search sources but no YouTube sources - get YouTube sources too
+            instructions.extend([
+                "",
+                f"✅ Good! You have {len(search_sources)} search sources with news coverage.",
+                "🎥 Now use youtube_search tool to get specialized insights from your channels.",
+                f'   - Use: {{"field": "{task.field.value}", "subsection": "{task.sub_section.value if task.sub_section else None}", "operation": "topics", "days_back": 7}}',
+                ""
+            ])
         else:
-            # No search results yet, need to search first
-            instructions.extend(["", "🔍 STEP 1: Search for trending topics using the search tool", "🎯 STEP 2: Extract topics and return TopicList"])
+            # No search results yet, need to discover topics from multiple sources
+            instructions.extend([
+                "",
+                "🔍 TOPIC DISCOVERY STRATEGY - Use BOTH sources for comprehensive coverage:",
+                "",
+                "🎯 STEP 1: Use youtube_search tool to find trending topics from your specialized channels",
+                f'   - Use: {{"field": "{task.field.value}", "subsection": "{task.sub_section.value if task.sub_section else None}", "operation": "topics", "days_back": 7}}',
+                "   - YouTube channels provide insider perspectives and emerging trends",
+                "   - This gives you topics that mainstream news might miss",
+                "",
+                "🔍 STEP 2: Use search tool to find trending topics from news sources",
+                '   - Use: {"query": "trending news today", "search_type": "news", "time_limit": "w"}',
+                "   - This gives you broader market/news perspective",
+                "",
+                "🎯 STEP 3: Combine insights from both sources and return TopicList",
+                "   - Prioritize topics that appear in both YouTube and news sources",
+                "   - Include unique YouTube topics that show emerging trends"
+            ])
 
         instructions.extend(["", "Expected TopicList schema:", f"{TopicList.model_json_schema()}"])
 
@@ -377,39 +453,94 @@ The response must contain either:
 
     def _build_write_story_instructions(self, task: ReporterTask, state: ReporterState) -> list[str]:
         """Build instructions for write story task."""
-        if state.task_phase == TaskPhase.RESEARCH:
-            # Research phase instructions
+        # Check if we have memory sources available
+        memory_sources_available = len(state.sources) > 0
+
+        if memory_sources_available:
+            # If memory sources are available, instruct to use them directly
+            return [
+                "# MEMORY SOURCES AVAILABLE - WRITE STORY DIRECTLY",
+                f"Topic: {task.topic}",
+                f"📚 Available Sources: {len(state.sources)} sources from previous research",
+                "",
+                "🚨 IMPORTANT: You have sufficient sources from memory - DO NOT perform additional research!",
+                "Use the existing sources below to write your story immediately.",
+                "",
+                "WRITING INSTRUCTIONS:",
+                "1. Use the research sources below to write a comprehensive story",
+                f"2. Target word count: {task.target_word_count} words",
+                "3. Include proper attribution and quotes where relevant",
+                "4. Structure: headline, lead paragraph, body paragraphs, conclusion",
+                "5. Ensure all sources are properly referenced",
+                "",
+                "CRITICAL: Return a StoryDraft with the complete article - NO additional research needed!",
+                "",
+                "Expected StoryDraft schema:",
+                f"{StoryDraft.model_json_schema()}",
+            ]
+
+        elif state.task_phase == TaskPhase.RESEARCH:
+            # Research phase instructions - check memory first, then search
+            from agents.shared_memory_store import get_shared_memory_store
+            memory_store = get_shared_memory_store()
+            available_memory_topics = memory_store.list_topics(field=task.field.value)
+
             warning_msg = ""
             if state.research_iteration_count >= 2:
                 warning_msg = f"\n⚠️  WARNING: Research iteration {state.research_iteration_count + 1}/4 - Task will FAIL if no sources are found!"
 
-            return [
+            instructions = [
                 "# CURRENT PHASE: RESEARCH",
                 f"Topic: {task.topic}",
                 f"Research Progress: {len(state.sources)}/{task.min_sources} sources found",
                 f"Research Iteration: {state.research_iteration_count + 1}/4 (max 4 iterations){warning_msg}",
                 "",
+                "🧠 MEMORY-FIRST RESEARCH STRATEGY:",
+            ]
+
+            if available_memory_topics:
+                instructions.extend([
+                    f"Available topics in SharedMemoryStore for {task.field.value}:",
+                    *[f"  - '{topic}'" for topic in available_memory_topics],
+                    "",
+                    "1. FIRST: Check if your topic matches any memory topic above",
+                    f"   - If '{task.topic}' is similar to any memory topic, use fetch_from_memory tool",
+                    f'   - Use: {{"topic_key": "exact_memory_topic_name", "field": "{task.field.value}"}}',
+                    "   - This gives you pre-validated research content instantly",
+                    "",
+                    "2. THEN: If no memory match or need more content, use search/scrape tools",
+                    f"   - Search for: '{task.topic}'",
+                    "   - Scrape promising URLs for detailed content",
+                    "",
+                ])
+            else:
+                instructions.extend([
+                    "No topics found in memory - use traditional research methods:",
+                    "",
+                ])
+
+            instructions.extend([
                 "RESEARCH INSTRUCTIONS:",
-                f"1. FIRST: Search EXACTLY for: '{task.topic}' (use this exact text as query)",
+                f"🥇 PRIORITY: Use fetch_from_memory if topic matches memory",
+                f"🥈 FALLBACK: Search EXACTLY for: '{task.topic}' (use this exact text as query)",
                 "   - Use search tool with 'news' search_type and 'time_limit': 'w'",
                 "   - This will give you source URLs to investigate",
                 "",
-                "2. THEN: Use scrape tool to get detailed content from EACH promising source URL",
+                "🥉 DETAILED: Use scrape tool to get detailed content from EACH promising source URL",
                 "   - Scrape at least 2-3 URLs from your search results",
                 '   - Use: {"url": "single_url_here"} format (not arrays!)',
                 "   - Look for facts, quotes, statistics, company names, dates, numbers",
                 "",
-                f"3. COLLECT: Gather at least {task.min_sources} reliable sources with detailed facts",
-                "4. RETURN: Once you have sufficient facts from scraping, return a ResearchResult",
-                "",
-                f"🎯 WORKFLOW: Search for '{task.topic}' → Scrape promising URLs → Return ResearchResult",
-                "⚠️ CRITICAL: Always scrape sources to get detailed facts, don't rely only on search snippets!",
+                f"🎯 COLLECT: Gather at least {task.min_sources} reliable sources with detailed facts",
+                "📝 RETURN: Once you have sufficient facts, return a ResearchResult",
                 "",
                 "CRITICAL: You must either use a tool OR return a ResearchResult",
                 "",
                 "Expected ResearchResult schema:",
                 f"{ResearchResult.model_json_schema()}",
-            ]
+            ])
+
+            return instructions
         else:
             # Writing phase instructions
             return [

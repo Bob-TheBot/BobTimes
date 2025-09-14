@@ -3,8 +3,8 @@
 from datetime import datetime, timedelta
 from typing import Any
 
-from googleapiclient.discovery import build
-from youtube_transcript_api import YouTubeTranscriptApi
+from googleapiclient.discovery import build # type: ignore
+from youtube_transcript_api import FetchedTranscript, YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 
 from core.config_service import ConfigService
@@ -13,6 +13,9 @@ from .youtube_models import (
     YouTubeVideo, VideoTranscript, YouTubeChannelInfo,
     YouTubeSearchParams, YouTubeSearchResult, TranscriptionMethod, YouTubeField
 )
+
+# Import subsection types for type hints
+from agents.types import TechnologySubSection, EconomicsSubSection, ScienceSubSection
 
 logger = get_logger(__name__)
 
@@ -33,23 +36,56 @@ class YouTubeService:
 
         logger.info("YouTube service initialized successfully")
 
-    def get_channels_for_field(self, field: YouTubeField) -> list[str]:
-        """Get channel IDs for a specific field from environment configuration.
+    def get_channels_for_field(
+        self,
+        field: YouTubeField,
+        subsection: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None
+    ) -> list[str]:
+        """Get channel IDs for a specific field and optional subsection from environment configuration.
 
         Supports both YouTube URLs and channel IDs. URLs are automatically converted to channel IDs.
+
+        Args:
+            field: The YouTube field (technology, science, economics, sports)
+            subsection: Optional subsection within the field for more specific channel targeting
+
+        Returns:
+            List of channel IDs for the specified field/subsection
+
+        Environment Variable Priority:
+            1. Subsection-specific: YOUTUBE_CHANNELS_{FIELD}_{SUBSECTION} (if subsection provided)
+            2. Field-level fallback: YOUTUBE_CHANNELS_{FIELD}
         """
-        env_key = f"youtube_channels_{field.value}"
-        channels_str = self.config_service.get(env_key, "")
+        channels_str = ""
+
+        # First try subsection-specific configuration if subsection is provided
+        if subsection is not None:
+            subsection_env_key = f"youtube_channels_{field.value}_{subsection.value}"
+            channels_str = self.config_service.get(subsection_env_key, "")
+
+            if channels_str:
+                logger.info(f"Using subsection-specific channels for {field.value}.{subsection.value}")
+            else:
+                logger.debug(f"No subsection-specific channels found for {field.value}.{subsection.value}, falling back to field-level")
+
+        # Fall back to field-level configuration if no subsection channels found
+        if not channels_str:
+            field_env_key = f"youtube_channels_{field.value}"
+            channels_str = self.config_service.get(field_env_key, "")
+
+            if channels_str:
+                logger.info(f"Using field-level channels for {field.value}")
 
         if not channels_str:
-            logger.warning(f"No channels configured for field: {field}")
+            logger.warning(f"No channels configured for field: {field}" +
+                         (f".{subsection.value}" if subsection else ""))
             return []
 
         # Split comma-separated entries and clean whitespace
         raw_channels = [channel.strip() for channel in channels_str.split(",") if channel.strip()]
 
         # Convert URLs to channel IDs
-        channel_ids = []
+        channel_ids: list[str] = []
         for channel in raw_channels:
             channel_id = self._extract_channel_id(channel)
             if channel_id:
@@ -57,7 +93,8 @@ class YouTubeService:
             else:
                 logger.warning(f"Could not extract channel ID from: {channel}")
 
-        logger.info(f"Found {len(channel_ids)} valid channels for field {field}")
+        logger.info(f"Found {len(channel_ids)} valid channels for {field.value}" +
+                   (f".{subsection.value}" if subsection else ""))
         return channel_ids
 
     def _extract_channel_id(self, channel_input: str) -> str | None:
@@ -115,7 +152,6 @@ class YouTubeService:
         """Search for recent videos from specified channels."""
         try:
             all_videos = []
-            all_transcripts = {}
             channel_info = {}
 
             # Calculate date threshold
@@ -136,22 +172,21 @@ class YouTubeService:
                     since_date
                 )
 
-                all_videos.extend(videos)
-
-                # Get transcripts if requested
+                # Get transcripts if requested and attach them directly to video objects
                 if params.include_transcripts:
                     for video in videos:
                         transcript = await self._get_video_transcript(
                             video.video_id,
                             params.transcription_method
                         )
-                        if transcript:
-                            all_transcripts[video.video_id] = transcript
+                        # Attach transcript directly to the video object
+                        video.transcript = transcript
+
+                all_videos.extend(videos)
 
             return YouTubeSearchResult(
                 success=True,
                 videos=all_videos,
-                transcripts=all_transcripts,
                 channels=channel_info,
                 total_videos=len(all_videos),
                 error=None
@@ -162,7 +197,6 @@ class YouTubeService:
             return YouTubeSearchResult(
                 success=False,
                 videos=[],
-                transcripts={},
                 channels={},
                 total_videos=0,
                 error=str(e)
@@ -256,7 +290,8 @@ class YouTubeService:
                 view_count=int(stats.get('viewCount', 0)),
                 like_count=int(stats.get('likeCount', 0)),
                 url=f"https://www.youtube.com/watch?v={item['id']}",
-                thumbnail_url=snippet.get('thumbnails', {}).get('high', {}).get('url')
+                thumbnail_url=snippet.get('thumbnails', {}).get('high', {}).get('url'),
+                transcript=None  # Transcript will be added later if requested
             )
 
         except Exception as e:
@@ -271,11 +306,7 @@ class YouTubeService:
         """Get transcript for a video using YouTube's auto-generated captions."""
         try:
             # Only support YouTube's built-in transcription
-            if method == TranscriptionMethod.YOUTUBE_AUTO:
-                return await self._get_youtube_transcript(video_id)
-            else:
-                logger.warning(f"Unsupported transcription method: {method}. Only YouTube auto-captions supported.")
-                return None
+            return await self._get_youtube_transcript(video_id)
 
         except Exception as e:
             logger.error(f"Failed to get transcript for {video_id}: {e}")
@@ -284,11 +315,12 @@ class YouTubeService:
     async def _get_youtube_transcript(self, video_id: str) -> VideoTranscript | None:
         """Get transcript using YouTube's auto-generated captions."""
         try:
-            # Use the static method to get transcript
-            transcript_list: Any = YouTubeTranscriptApi.get_transcript(video_id)  # type: ignore
+            # Use the correct static method to get transcript
+            yt: YouTubeTranscriptApi = YouTubeTranscriptApi()
+            fetched_transcript: FetchedTranscript = yt.fetch(video_id)
 
             # Combine all transcript segments
-            full_transcript = ' '.join([segment['text'] for segment in transcript_list])  # type: ignore
+            full_transcript = ' '.join([segment.text for segment in fetched_transcript.snippets])
 
             return VideoTranscript(
                 video_id=video_id,
@@ -301,4 +333,7 @@ class YouTubeService:
 
         except (TranscriptsDisabled, NoTranscriptFound) as e:
             logger.warning(f"No transcript available for {video_id}: {e}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get transcript for {video_id}: {e}")
             return None

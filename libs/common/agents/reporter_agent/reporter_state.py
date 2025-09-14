@@ -1,11 +1,16 @@
 """Reporter state management models and functionality."""
 
 from enum import StrEnum
+from typing import Any
 
 from agents.models.search_models import SearchResultSummary
 from agents.models.story_models import ResearchResult, StorySource, ToolCall
 from agents.models.task_models import ReporterTask
+from core.logging_service import get_logger
 from pydantic import BaseModel, Field
+from utils.youtube_models import YouTubeVideo
+
+logger = get_logger(__name__)
 
 
 class TaskPhase(StrEnum):
@@ -63,6 +68,9 @@ class ReporterState(BaseModel):
     accumulated_facts: list[str] = Field(default_factory=list)
     sources: list[StorySource] = Field(default_factory=_default_sources)
 
+    # YouTube video metadata for transcript retrieval (no API cost)
+    youtube_video_metadata: list[YouTubeVideo] = Field(default_factory=lambda: [])
+
     # Tool execution history
     tool_calls: list[ToolCall] = Field(default_factory=_default_tool_calls)
     tool_results: list[ReporterToolResult] = Field(default_factory=_default_tool_results)
@@ -89,6 +97,7 @@ class ReporterStateManager:
         state.search_results.clear()
         state.accumulated_facts.clear()
         state.sources.clear()
+        state.youtube_video_metadata.clear()
         state.tool_calls.clear()
         state.tool_results.clear()
         state.errors.clear()
@@ -224,3 +233,95 @@ class ReporterStateManager:
             "tool_calls_made": len(state.tool_calls),
             "errors": len(state.errors)
         }
+
+    @staticmethod
+    def save_sources_with_topics(
+        state: ReporterState,
+        sources: list[StorySource],
+        topic_source_mapping: dict[str, Any] | None = None
+    ) -> None:
+        """Save sources to SharedMemoryStore and current state.
+
+        Args:
+            state: Reporter state
+            sources: List of sources to save
+            topic_source_mapping: Optional mapping of topics to their source data
+        """
+        from agents.shared_memory_store import get_shared_memory_store
+
+        # Always add sources to current state for immediate use
+        for source in sources:
+            if source.url not in [s.url for s in state.sources]:
+                state.sources.append(source)
+
+        # Store in SharedMemoryStore if we have topic mapping
+        if topic_source_mapping:
+            memory_store = get_shared_memory_store()
+            field = state.current_task.field.value
+
+            for topic_name, topic_data in topic_source_mapping.items():
+                # Get the source for this topic
+                topic_source = topic_data.get("source")
+                if topic_source:
+                    # Store in shared memory for future story writing tasks
+                    memory_store.store_memory(
+                        topic_name=topic_name,
+                        field=field,
+                        sources=[topic_source]
+                    )
+                    logger.info(f"📚 Stored source for topic '{topic_name}' in SharedMemoryStore")
+        else:
+            # If no topic mapping, log that sources are only available for current execution
+            logger.info(f"ℹ️ Stored {len(sources)} sources in current state only (no topic mapping available)")
+
+    @staticmethod
+    def get_sources_for_topic(topic_name: str) -> list[StorySource]:
+        """Retrieve all sources for a specific topic from shared memory.
+
+        This is the key method that reporters will use to get sources for story writing.
+
+        Args:
+            topic_name: The topic to get sources for
+
+        Returns:
+            List of StorySource objects containing all research data for the topic
+        """
+        from agents.shared_memory_store import get_shared_memory_store
+
+        memory_store = get_shared_memory_store()
+        return memory_store.get_sources_for_topic(topic_name)
+
+    @staticmethod
+    def get_sources_count_for_field(field: str) -> int:
+        """Get total count of sources stored in SharedMemoryStore for a field.
+
+        Args:
+            field: The field to count sources for
+
+        Returns:
+            Total number of sources across all topics in the field
+        """
+        from agents.shared_memory_store import get_shared_memory_store
+
+        memory_store = get_shared_memory_store()
+        memories = memory_store.get_memories_by_field(field)
+        return sum(len(memory.sources) for memory in memories)
+
+    @staticmethod
+    def get_all_sources_for_field(field: str) -> list[StorySource]:
+        """Get all sources stored in SharedMemoryStore for a field.
+
+        Args:
+            field: The field to get sources for
+
+        Returns:
+            List of all StorySource objects across all topics in the field
+        """
+        from agents.shared_memory_store import get_shared_memory_store
+
+        memory_store = get_shared_memory_store()
+        memories = memory_store.get_memories_by_field(field)
+        all_sources: list[StorySource] = []
+        for memory in memories:
+            all_sources.extend(memory.sources)
+        return all_sources

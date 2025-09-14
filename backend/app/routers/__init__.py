@@ -1,5 +1,6 @@
 # backend/app/routers/__init__.py
 
+from ..api.news import router as news_router
 from core.config_service import ConfigService
 from fastapi import APIRouter
 
@@ -18,12 +19,11 @@ async def health_check():
     import os
 
     # Debug print to see what environment is loaded
-    env_info = {
+    env_info = { 
         "APP_ENV": os.getenv("APP_ENV"),
         "DATABASE_URL": os.getenv("DATABASE_URL"),
         "config_service_env": config_service.get_environment(),
         "config_service_testing": config_service.is_testing(),
-        "database_url": config_service.get_database_url(),
     }
     print(f"[HEALTH DEBUG] Environment info: {env_info}")
 
@@ -32,7 +32,6 @@ async def health_check():
         "service": "backend",
         "environment": config_service.get_environment(),
         "is_testing": config_service.is_testing(),
-        "database_type": "sqlite" if config_service.get_database_url().startswith("sqlite") else "postgresql",
     }
 
 
@@ -41,6 +40,5 @@ router.include_router(dev_router, prefix="/api/v1/dev", tags=["development"])
 router.include_router(content_router, prefix="/api/v1", tags=["content"])
 
 # Import and include news API routes (for frontend queries only)
-from ..api.news import router as news_router
 
 router.include_router(news_router, prefix="/api/v1", tags=["news"])

@@ -338,7 +338,7 @@ class EditorExecutor:
             logger.error("❌ assign_topics action missing required 'field' parameter")
             return
 
-        # Get available topics for this field from state
+        # Get available topics for this field from state (these come from reporter's TopicList)
         available_topics = state.topics_collected.get(field, [])
 
         # Create params with available topics from state

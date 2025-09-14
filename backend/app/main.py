@@ -9,7 +9,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.middleware.logging_middleware import RequestLoggingMiddleware
 from app.routers import router as api_router
-from shared_db.db.init_db import init_db
 
 # Configure logging
 logger = get_logger(__name__)
@@ -18,13 +17,7 @@ logger = get_logger(__name__)
 @asynccontextmanager
 async def lifespan(_: FastAPI) -> AsyncGenerator[None, Any]:
     # Startup logic
-    logger.info("Starting application database setup")
-    success = init_db()
-    if success:
-        logger.info("Database setup completed successfully", service="database", status="initialized")
-    else:
-        logger.error("Database setup failed", service="database", status="failed")
-        raise RuntimeError("Failed to initialize database")
+   
 
     yield
 

@@ -27,7 +27,7 @@ common = { workspace = true }
 backend = { workspace = true }
 
 [tool.uv.workspace]
-members = ["libs/*/", "backend", "mcp_demo", "mcp_server"]
+members = ["libs/common", "backend", "mcp_demo", "mcp_server"]
 
 [tool.uv]
 package = false

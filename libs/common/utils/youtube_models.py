@@ -39,6 +39,7 @@ class YouTubeVideo(BaseModel):
     like_count: int = Field(default=0, description="Number of likes")
     url: str = Field(description="Full YouTube URL")
     thumbnail_url: str | None = Field(None, description="Video thumbnail URL")
+    transcript: "VideoTranscript | None" = Field(None, description="Video transcript if available")
 
 
 class VideoTranscript(BaseModel):
@@ -80,10 +81,6 @@ class YouTubeSearchResult(BaseModel):
     """Result from YouTube search operation."""
     success: bool = Field(description="Whether the search was successful")
     videos: list[YouTubeVideo] = Field(default_factory=lambda: [], description="Found videos")
-    transcripts: dict[str, VideoTranscript] = Field(
-        default_factory=dict, 
-        description="Video transcripts keyed by video_id"
-    )
     channels: dict[str, YouTubeChannelInfo] = Field(
         default_factory=dict,
         description="Channel info keyed by channel_id"

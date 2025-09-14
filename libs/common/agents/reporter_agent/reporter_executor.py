@@ -4,7 +4,7 @@ from typing import Any
 
 from agents.agent import BaseAgent
 from agents.agent import ToolCall as BaseToolCall
-from agents.models.story_models import AgentResponse, ResearchResult, StoryDraft, TopicList
+from agents.models.story_models import AgentResponse, ResearchResult, StoryDraft, StorySource, TopicList
 from agents.models.story_models import ToolCall as StoryToolCall
 from agents.models.task_models import ReporterTask
 from agents.reporter_agent.reporter_prompt import ReporterPromptBuilder
@@ -65,6 +65,15 @@ class ReporterTaskExecutor:
             max_iterations=15
         )
 
+        # For WRITE_STORY tasks, do NOT automatically inject memory sources
+        # Let the agent choose to use fetch_from_memory tool instead
+        if task.name == TaskType.WRITE_STORY and task.topic:
+            logger.info(
+                f"� [REPORTER-{self.reporter_id}] Starting WRITE_STORY task for topic: {task.topic}",
+                topic=task.topic,
+                note="Agent will choose whether to use fetch_from_memory tool or research fresh content"
+            )
+
         logger.info(
             f"📰 [REPORTER-{self.reporter_id}] Starting task: {task.name.value}",
             agent_type="REPORTER",
@@ -75,9 +84,8 @@ class ReporterTaskExecutor:
             topic=(task.topic[:100] + "..." if task.topic and len(task.topic) > 100 else task.topic or "No specific topic")
         )
 
-        # Reset state for new task if it's a WRITE_STORY task
-        if task.name == TaskType.WRITE_STORY:
-            ReporterStateManager.reset_for_new_task(state, task)
+        # Do NOT automatically load shared memories - let agent choose to use fetch_from_memory tool
+        # self._load_shared_memories(state, task)  # Commented out to force tool usage
 
         # Main execution loop
         while state.iteration < state.max_iterations:
@@ -247,12 +255,218 @@ class ReporterTaskExecutor:
         # Add result to state
         ReporterStateManager.add_tool_result(state, tool_result)
 
-        # Handle specific tool results using the original structured result
-        if tool_call.name == "search" and tool_result.success:
-            self._handle_search_result(result, state)  # Pass original structured result
+        # Handle unified tool results - all tools now return UnifiedToolResult
+        if tool_result.success and hasattr(result, 'sources') and hasattr(result, 'topic_source_mapping'):
+            await self._handle_unified_tool_result(result, state)
+        elif tool_result.success and tool_call.name == "fetch_from_memory":
+            # Handle fetch_from_memory results separately
+            self._handle_fetch_from_memory_result(result, state)
 
         if tool_result.error:
             ReporterStateManager.add_error(state, f"Tool {tool_call.name} failed: {tool_result.error}")
+
+    async def _handle_unified_tool_result(self, result: Any, state: ReporterState) -> None:
+        """Handle unified tool results from any tool (search, youtube, scraper).
+
+        Args:
+            result: UnifiedToolResult from any tool
+            state: Current reporter state
+        """
+        operation = getattr(result, "operation", "unknown")
+        logger.info(
+            f"🔧 [REPORTER-{self.reporter_id}] Processing unified tool result",
+            operation=operation,
+            sources_count=len(result.sources) if hasattr(result, 'sources') else 0,
+            topics_count=len(result.topics_extracted) if hasattr(result, 'topics_extracted') else 0,
+            has_topic_mapping=bool(getattr(result, 'topic_source_mapping', None))
+        )
+
+        # Store sources in SharedMemoryStore using topic mapping
+        if hasattr(result, "sources") and result.sources:
+            topic_mapping = getattr(result, "topic_source_mapping", None)
+
+            # For search results, check if we need to enhance content with scraping
+            if operation == "search" and topic_mapping:
+                enhanced_sources, enhanced_mapping = await self._enhance_search_content(result.sources, topic_mapping, state)
+
+                ReporterStateManager.save_sources_with_topics(
+                    state=state,
+                    sources=enhanced_sources,
+                    topic_source_mapping=enhanced_mapping
+                )
+
+                logger.info(
+                    f"🔗 [REPORTER-{self.reporter_id}] Stored {len(enhanced_sources)} enhanced sources from {operation} tool in SharedMemoryStore",
+                    topics_linked=len(enhanced_mapping) if enhanced_mapping else 0
+                )
+            else:
+                ReporterStateManager.save_sources_with_topics(
+                    state=state,
+                    sources=result.sources,
+                    topic_source_mapping=topic_mapping
+                )
+
+                logger.info(
+                    f"🔗 [REPORTER-{self.reporter_id}] Stored {len(result.sources)} sources from {operation} tool in SharedMemoryStore",
+                    topics_linked=len(topic_mapping) if topic_mapping else 0
+                )
+        else:
+            logger.warning(
+                f"⚠️ [REPORTER-{self.reporter_id}] Tool result has no sources or sources are empty",
+                operation=operation
+            )
+
+        # Handle YouTube-specific metadata if present
+        if operation == "youtube" and hasattr(result, "metadata") and result.metadata:
+            video_metadata = result.metadata.get("video_metadata", [])
+            if video_metadata:
+                # Add video metadata to state for later use
+                for metadata in video_metadata:
+                    # Avoid duplicates - metadata is a dict, so check video_id
+                    if not any(existing.video_id == metadata["video_id"] for existing in state.youtube_video_metadata):
+                        # Convert dict metadata to YouTubeVideo object
+                        from utils.youtube_models import YouTubeVideo
+                        from datetime import datetime
+                        video_obj = YouTubeVideo(
+                            video_id=metadata["video_id"],
+                            title=metadata["title"],
+                            description=metadata.get("description", ""),
+                            channel_id=metadata["channel_id"],
+                            channel_title=metadata["channel_title"],
+                            published_at=datetime.fromisoformat(metadata["published_at"]),
+                            duration="",  # Not available in metadata
+                            url=metadata["url"],
+                            thumbnail_url=None,  # Not available in metadata
+                            transcript=None  # Not needed for metadata storage
+                        )
+                        state.youtube_video_metadata.append(video_obj)
+
+                logger.info(
+                    f"📹 [REPORTER-{self.reporter_id}] Stored {len(video_metadata)} video metadata entries for transcript retrieval",
+                    total_metadata_entries=len(state.youtube_video_metadata)
+                )
+
+    async def _enhance_search_content(self, sources: list[StorySource], topic_mapping: dict[str, Any], state: ReporterState) -> tuple[list[StorySource], dict[str, Any]]:
+        """Enhance search sources with full content by scraping when needed.
+
+        Args:
+            sources: Original sources from search
+            topic_mapping: Topic to source mapping
+            state: Current reporter state
+
+        Returns:
+            Tuple of (enhanced_sources, enhanced_topic_mapping)
+        """
+        enhanced_sources: list[StorySource] = []
+        enhanced_mapping: dict[str, Any] = {}
+        scraper_tool = None
+
+        # Get scraper tool if available
+        scraper_tool = self.tool_registry.get_tool_by_name("scrape")
+
+        for source in sources:
+            enhanced_source = source
+
+            # Find corresponding topic mapping
+            topic_info = None
+            for topic_name, info in topic_mapping.items():
+                if info.get('source') and info['source'].url == source.url:
+                    topic_info = info
+                    break
+
+            # Check if we need to enhance content
+            if topic_info and topic_info.get('needs_content_fetch', False) and scraper_tool:
+                logger.info(
+                    f"🔍 [REPORTER-{self.reporter_id}] Enhancing content for topic with scraping",
+                    url=source.url,
+                    current_content_length=topic_info.get('content_length', 0)
+                )
+
+                try:
+                    # Create scraper params
+                    from agents.reporter_agent.reporter_tools import ScrapeParams
+                    scrape_params = ScrapeParams(url=source.url)
+
+                    # Execute scraping
+                    scrape_result = await scraper_tool.execute(scrape_params)
+
+                    if scrape_result.success and scrape_result.sources:
+                        # Use the scraped content to enhance the source
+                        scraped_source = scrape_result.sources[0]
+                        if scraped_source.content and len(scraped_source.content) > len(source.content or ''):
+                            enhanced_source = scraped_source
+                            logger.info(
+                                f"✅ [REPORTER-{self.reporter_id}] Enhanced content via scraping",
+                                url=source.url,
+                                original_length=len(source.content or ''),
+                                enhanced_length=len(scraped_source.content)
+                            )
+                        else:
+                            logger.warning(
+                                f"⚠️ [REPORTER-{self.reporter_id}] Scraping didn't improve content quality",
+                                url=source.url
+                            )
+                    else:
+                        logger.warning(
+                            f"⚠️ [REPORTER-{self.reporter_id}] Failed to scrape content",
+                            url=source.url,
+                            error=scrape_result.error
+                        )
+                except Exception as e:
+                    logger.error(
+                        f"❌ [REPORTER-{self.reporter_id}] Error during content enhancement",
+                        url=source.url,
+                        error=str(e)
+                    )
+
+            enhanced_sources.append(enhanced_source)
+
+            # Update topic mapping with enhanced source
+            if topic_info:
+                topic_name = None
+                for name, info in topic_mapping.items():
+                    if info.get('source') and info['source'].url == source.url:
+                        topic_name = name
+                        break
+
+                if topic_name:
+                    enhanced_mapping[topic_name] = {
+                        'source': enhanced_source,
+                        'query': topic_info.get('query'),
+                        'needs_content_fetch': False,  # Content has been enhanced
+                        'content_length': len(enhanced_source.content or enhanced_source.summary or '')
+                    }
+
+        # Filter out topics without sufficient content
+        final_sources: list[StorySource] = []
+        final_mapping: dict[str, Any] = {}
+
+        for source in enhanced_sources:
+            content_length = len(source.content or source.summary or '')
+            if content_length >= 100:  # Minimum content threshold
+                final_sources.append(source)
+
+                # Find and keep corresponding topic mapping
+                for topic_name, info in enhanced_mapping.items():
+                    if info.get('source') and info['source'].url == source.url:
+                        final_mapping[topic_name] = info
+                        break
+            else:
+                logger.warning(
+                    f"⚠️ [REPORTER-{self.reporter_id}] Filtering out topic with insufficient content",
+                    url=source.url,
+                    content_length=content_length,
+                    title=source.title
+                )
+
+        logger.info(
+            f"📊 [REPORTER-{self.reporter_id}] Content validation complete",
+            original_sources=len(enhanced_sources),
+            valid_sources=len(final_sources),
+            filtered_out=len(enhanced_sources) - len(final_sources)
+        )
+
+        return final_sources, final_mapping
 
     def _handle_search_result(self, result: Any, state: ReporterState) -> None:
         """Handle search tool results and update state.
@@ -280,21 +494,132 @@ class ReporterTaskExecutor:
             )
             ReporterStateManager.add_search_result(state, search_summary)
 
-            # Convert to story sources and add to state
+            # Convert to story sources and save using generic method
             story_sources = ReporterToolRegistry.convert_search_results_to_sources(result.cleaned_results)
-            for source in story_sources:
-                if source.url not in [s.url for s in state.sources]:
-                    state.sources.append(source)
+            sources_before = len(state.sources)
+
+            # Use topic mapping from search results if available
+            topic_mapping = getattr(result, "topic_source_mapping", None)
+            ReporterStateManager.save_sources_with_topics(
+                state=state,
+                sources=story_sources,
+                topic_source_mapping=topic_mapping
+            )
 
             logger.info(
-                f"🔗 [REPORTER-{self.reporter_id}] Added {len(story_sources)} sources from search results",
-                sources_before=len(state.sources) - len(story_sources),
+                f"🔗 [REPORTER-{self.reporter_id}] Saved {len(story_sources)} sources from search results",
+                sources_before=sources_before,
                 sources_after=len(state.sources),
                 cleaned_results_count=len(result.cleaned_results)
             )
         else:
             logger.warning(
                 f"⚠️ [REPORTER-{self.reporter_id}] Search result has no cleaned_results attribute"
+            )
+
+    def _handle_youtube_result(self, result: Any, state: ReporterState) -> None:
+        """Handle YouTube tool results and update state.
+
+        Args:
+            result: YouTube tool result
+            state: Current reporter state
+        """
+        logger.info(
+            f"🎥 [REPORTER-{self.reporter_id}] Processing YouTube result",
+            result_type=type(result).__name__,
+            operation=getattr(result, "operation", "unknown"),
+            success=getattr(result, "success", False),
+            channels_searched=getattr(result, "channels_searched", 0),
+            videos_found=getattr(result, "videos_found", 0)
+        )
+
+        if hasattr(result, "sources") and result.sources:
+            # Use ReporterStateManager to store sources in SharedMemoryStore
+            topic_mapping = getattr(result, "topic_source_mapping", None)
+            ReporterStateManager.save_sources_with_topics(
+                state=state,
+                sources=result.sources,
+                topic_source_mapping=topic_mapping
+            )
+
+            logger.info(
+                f"🔗 [REPORTER-{self.reporter_id}] Stored {len(result.sources)} YouTube sources in SharedMemoryStore",
+                topics_linked=len(topic_mapping) if topic_mapping else 0,
+                operation=result.operation
+            )
+        else:
+            logger.warning(
+                f"⚠️ [REPORTER-{self.reporter_id}] YouTube result has no sources attribute or sources are empty"
+            )
+
+        # Store video metadata for later transcript retrieval (no API cost)
+        if hasattr(result, "video_metadata") and result.video_metadata:
+            # Add video metadata to state for later use
+            for metadata in result.video_metadata:
+                # Avoid duplicates - metadata is a dict, so check video_id
+                if not any(existing.video_id == metadata["video_id"] for existing in state.youtube_video_metadata):
+                    # Convert dict metadata to YouTubeVideo object
+                    from utils.youtube_models import YouTubeVideo
+                    from datetime import datetime
+                    video_obj = YouTubeVideo(
+                        video_id=metadata["video_id"],
+                        title=metadata["title"],
+                        description=metadata.get("description", ""),
+                        channel_id=metadata["channel_id"],
+                        channel_title=metadata["channel_title"],
+                        published_at=datetime.fromisoformat(metadata["published_at"]),
+                        duration="",  # Not available in metadata
+                        url=metadata["url"],
+                        thumbnail_url=None,  # Not available in metadata
+                        transcript=None  # Not needed for metadata storage
+                    )
+                    state.youtube_video_metadata.append(video_obj)
+
+            logger.info(
+                f"📹 [REPORTER-{self.reporter_id}] Stored {len(result.video_metadata)} video metadata entries for transcript retrieval",
+                total_metadata_entries=len(state.youtube_video_metadata),
+                operation=result.operation
+            )
+
+    def _handle_fetch_from_memory_result(self, result: Any, state: ReporterState) -> None:
+        """Handle fetch_from_memory tool results and inject sources into state.
+
+        Args:
+            result: FetchFromMemoryResult from the tool
+            state: Current reporter state
+        """
+        logger.info(
+            f"🧠 [REPORTER-{self.reporter_id}] Processing fetch_from_memory result",
+            success=getattr(result, "success", False),
+            topic_key=getattr(result, "topic_key", "unknown"),
+            sources_count=getattr(result, "sources_count", 0)
+        )
+
+        if hasattr(result, "success") and result.success:
+            # Get the actual sources from memory and inject them into state
+            from agents.shared_memory_store import get_shared_memory_store
+            memory_store = get_shared_memory_store()
+
+            topic_sources = memory_store.get_sources_for_topic(result.topic_key)
+            if topic_sources:
+                # Add sources to state for LLM context
+                for source in topic_sources:
+                    if source.url not in [s.url for s in state.sources]:
+                        state.sources.append(source)
+
+                logger.info(
+                    f"📚 [REPORTER-{self.reporter_id}] Injected {len(topic_sources)} sources from memory into context",
+                    topic_key=result.topic_key,
+                    total_sources_now=len(state.sources)
+                )
+            else:
+                logger.warning(
+                    f"⚠️ [REPORTER-{self.reporter_id}] No sources found in memory for topic: {result.topic_key}"
+                )
+        else:
+            error_msg = getattr(result, "error", "Unknown error")
+            logger.warning(
+                f"⚠️ [REPORTER-{self.reporter_id}] fetch_from_memory failed: {error_msg}"
             )
 
     def _handle_final_response(
@@ -407,7 +732,7 @@ class ReporterTaskExecutor:
 
     def _ensure_all_sources_in_story(self, story_draft: StoryDraft, state: ReporterState) -> None:
         """Ensure all research sources are included in the story draft.
-        
+
         Args:
             story_draft: Story draft to update
             state: Current reporter state
@@ -457,3 +782,6 @@ class ReporterTaskExecutor:
 
         # Default to agent's configured model speed
         return self.agent.config.default_model_speed
+
+    # Removed _load_shared_memories method - no automatic memory injection
+    # Agents must use fetch_from_memory tool to retrieve content when needed

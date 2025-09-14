@@ -5,7 +5,26 @@ from abc import ABC, abstractmethod
 from typing import Any, cast
 
 from core.llm_service import ModelSpeed
-from pydantic import BaseModel, PrivateAttr
+from pydantic import BaseModel, Field, PrivateAttr
+
+
+class UnifiedToolResult(BaseModel):
+    """Unified result class for all reporter tools."""
+    success: bool = Field(description="Whether the operation was successful")
+    operation: str = Field(description="Type of operation performed (search, youtube, scrape)")
+    query: str | None = Field(default=None, description="Original query/URL used")
+
+    # Core data that all tools provide
+    sources: list[Any] = Field(default_factory=list, description="Sources found/scraped")
+    topics_extracted: list[str] = Field(default_factory=list, description="Topics extracted from results")
+    topic_source_mapping: dict[str, Any] = Field(default_factory=dict, description="Mapping of topics to their source data")
+
+    # Optional metadata (tool-specific)
+    metadata: dict[str, Any] = Field(default_factory=dict, description="Tool-specific metadata")
+
+    # Results and error handling
+    summary: str | None = Field(default=None, description="Summary of operation results")
+    error: str | None = Field(default=None, description="Error message if operation failed")
 
 
 class BaseTool(ABC, BaseModel):

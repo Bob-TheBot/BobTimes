@@ -6,13 +6,179 @@ from typing import Any
 
 from agents.models.search_models import CleanedSearchResult
 from agents.models.story_models import StorySource
-from agents.tools.base_tool import BaseTool
+from agents.tools.base_tool import BaseTool, UnifiedToolResult
 from core.config_service import ConfigService
 from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
 from pydantic import BaseModel, Field
 
 logger = get_logger(__name__)
+
+
+def _normalize_topic_name(topic: str) -> str:
+    """Normalize topic name for consistent storage and retrieval."""
+    return topic.strip().title()
+
+
+# ============================================================================
+# MEMORY FETCH TOOL
+# ============================================================================
+
+class FetchFromMemoryParams(BaseModel):
+    """Parameters for fetching content from SharedMemoryStore."""
+    topic_key: str = Field(description="Exact topic key from memory to fetch content for")
+    field: str = Field(description="Field to search within (technology/economics/science)")
+
+
+class FetchFromMemoryResult(BaseModel):
+    """Result of fetching content from memory."""
+    success: bool = Field(description="Whether the fetch was successful")
+    topic_key: str = Field(description="The topic key that was fetched")
+    sources_count: int = Field(default=0, description="Number of sources retrieved")
+    content_summary: str = Field(default="", description="Summary of retrieved content")
+    error: str | None = Field(default=None, description="Error message if fetch failed")
+
+
+class FetchFromMemoryTool(BaseTool):
+    """Fetch content from SharedMemoryStore for a specific topic key.
+
+    This tool allows reporters to retrieve validated content that was previously
+    stored in memory during topic discovery phase.
+    """
+
+    name: str = "fetch_from_memory"
+    description: str = """
+Fetch content from SharedMemoryStore using an exact topic key.
+Use this when you have a topic assignment and need to retrieve the research content.
+
+Available memory topics for your field will be shown in your context.
+Pick the topic key that best matches your assignment and use it to fetch content.
+
+Parameters:
+- topic_key: Exact topic key from memory (must match exactly)
+- field: Field to search within (technology/economics/science)
+
+Usage: <tool>fetch_from_memory</tool><args>{"topic_key": "Best Ai Tools To Create Viral Content", "field": "technology"}</args>
+
+Returns: Sources and content for the specified topic key
+"""
+    params_model: type[BaseModel] | None = FetchFromMemoryParams
+
+    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> FetchFromMemoryResult:
+        """Fetch content from SharedMemoryStore."""
+        if not isinstance(params, FetchFromMemoryParams):
+            return FetchFromMemoryResult(
+                success=False,
+                topic_key="",
+                error="Invalid parameters provided"
+            )
+
+        try:
+            from agents.shared_memory_store import get_shared_memory_store
+            memory_store = get_shared_memory_store()
+
+            # Get the specific memory entry
+            memory_entry = memory_store.get_memory(params.topic_key)
+
+            if not memory_entry:
+                # List available topics for debugging
+                available_topics = memory_store.list_topics(field=params.field)
+                return FetchFromMemoryResult(
+                    success=False,
+                    topic_key=params.topic_key,
+                    error=f"Topic key '{params.topic_key}' not found in memory. Available topics: {available_topics}"
+                )
+
+            # Verify field matches
+            if memory_entry.field != params.field:
+                return FetchFromMemoryResult(
+                    success=False,
+                    topic_key=params.topic_key,
+                    error=f"Topic key '{params.topic_key}' belongs to field '{memory_entry.field}', not '{params.field}'"
+                )
+
+            # Create content summary
+            content_parts = []
+            for source in memory_entry.sources:
+                if source.content:
+                    content_parts.append(f"Source: {source.title}\nContent: {source.content[:200]}...")
+                elif source.summary:
+                    content_parts.append(f"Source: {source.title}\nSummary: {source.summary}")
+
+            content_summary = "\n\n".join(content_parts)
+
+            logger.info(
+                f"📚 [FETCH-MEMORY] Retrieved content for topic: {params.topic_key}",
+                sources_count=len(memory_entry.sources),
+                field=params.field,
+                content_length=len(content_summary)
+            )
+
+            return FetchFromMemoryResult(
+                success=True,
+                topic_key=params.topic_key,
+                sources_count=len(memory_entry.sources),
+                content_summary=content_summary,
+                error=None
+            )
+
+        except Exception as e:
+            logger.error(f"Failed to fetch from memory: {e}")
+            return FetchFromMemoryResult(
+                success=False,
+                topic_key=params.topic_key,
+                error=f"Error fetching from memory: {str(e)}"
+            )
+
+
+def _extract_topics_from_search_results(results: list[CleanedSearchResult], query: str) -> tuple[list[str], dict[str, Any]]:
+    """Extract topics from search results and create topic-source mapping.
+
+    Args:
+        results: List of search results
+        query: Original search query
+
+    Returns:
+        Tuple of (topics_list, topic_source_mapping)
+    """
+    topics: list[str] = []
+    topic_source_mapping: dict[str, Any] = {}
+
+    for result in results:
+        if hasattr(result, 'title') and result.title:
+            # Use the result title as the topic, normalized
+            topic_name = _normalize_topic_name(result.title)
+
+            # Get available content - search results usually only have snippets
+            snippet = getattr(result, 'snippet', getattr(result, 'body', ''))
+            full_content = getattr(result, 'content', None)
+            url = getattr(result, 'url', getattr(result, 'href', ''))
+
+            # Validate content quality - we need substantial content for topics
+            content_length = len(full_content) if full_content else len(snippet)
+            has_substantial_content = content_length > 100  # Minimum content threshold
+
+            # Create source for this topic
+            source = StorySource(
+                url=url,
+                title=result.title,
+                summary=snippet,
+                content=full_content,
+                source_type='search',
+                accessed_at=datetime.now()
+            )
+
+            # Map topic to source with content validation info
+            topic_source_mapping[topic_name] = {
+                'source': source,
+                'query': query,
+                'needs_content_fetch': not has_substantial_content,  # Flag for fallback
+                'content_length': content_length
+            }
+
+            topics.append(topic_name)
+
+    return topics, topic_source_mapping
 
 
 # Search Tool Models
@@ -37,6 +203,8 @@ class SearchToolResult(BaseModel):
     query: str
     success: bool
     cleaned_results: list[CleanedSearchResult] = Field(default_factory=lambda: [])
+    topics_extracted: list[str] = Field(default_factory=list, description="Topics extracted from search results")
+    topic_source_mapping: dict[str, Any] = Field(default_factory=dict, description="Mapping of topics to their sources")
     error: str | None = None
 
 
@@ -93,7 +261,7 @@ When searching for news, always include recent time filters for current events.
         super().__init__(name=name, description=description)
         self.params_model = SearchParams
 
-    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> SearchToolResult:
+    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> UnifiedToolResult:
         """Execute search with DuckDuckGo API."""
         if not isinstance(params, SearchParams):
             raise ValueError(f"Expected SearchParams, got {type(params)}")
@@ -167,19 +335,38 @@ When searching for news, always include recent time filters for current events.
                     )
                 cleaned_results.append(cleaned_result)
 
-            return SearchToolResult(
-                search_type=params.search_type.value,
-                query=params.query,
+            # Extract topics from results for SharedMemoryStore
+            topics_extracted, topic_source_mapping = _extract_topics_from_search_results(cleaned_results, params.query)
+
+            # Convert to story sources for unified interface
+            story_sources = ReporterToolRegistry.convert_search_results_to_sources(cleaned_results)
+
+            return UnifiedToolResult(
                 success=True,
-                cleaned_results=cleaned_results,
+                operation="search",
+                query=params.query,
+                sources=story_sources,
+                topics_extracted=topics_extracted,
+                topic_source_mapping=topic_source_mapping,
+                metadata={
+                    "search_type": params.search_type.value,
+                    "results_count": len(cleaned_results),
+                    "time_limit": params.time_limit
+                },
+                summary=f"Found {len(cleaned_results)} search results for '{params.query}'",
                 error=None
             )
         except Exception as e:
             logger.error(f"Search tool execution failed: {e}")
-            return SearchToolResult(
-                search_type=params.search_type.value,
-                query=params.query,
+            return UnifiedToolResult(
                 success=False,
+                operation="search",
+                query=params.query,
+                sources=[],
+                topics_extracted=[],
+                topic_source_mapping={},
+                metadata={"search_type": params.search_type.value},
+                summary=None,
                 error=str(e)
             )
 
@@ -228,7 +415,7 @@ Always verify the source credibility before using scraped content in stories.
         super().__init__(name=name, description=description)
         self.params_model = ScrapeParams
 
-    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> ScraperToolResult:
+    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> UnifiedToolResult:
         """Execute scraping with web scraper."""
         if not isinstance(params, ScrapeParams):
             raise ValueError(f"Expected ScrapeParams, got {type(params)}")
@@ -249,19 +436,57 @@ Always verify the source credibility before using scraped content in stories.
             # Execute the scraping
             result = await scraper_tool.scrape_url(params.url)
 
-            return ScraperToolResult(
+            # Create story source from scraped content
+            sources = []
+            if result.success and result.content:
+                source = StorySource(
+                    url=result.url,
+                    title=result.title or "Scraped Content",
+                    summary=result.content[:200] + "..." if len(result.content) > 200 else result.content,
+                    content=result.content,
+                    source_type="scrape",
+                    accessed_at=datetime.now()
+                )
+                sources.append(source)
+
+                # Extract topic from title or URL
+                topic_name = _normalize_topic_name(result.title or result.url.split('/')[-1])
+                topic_source_mapping = {
+                    topic_name: {
+                        'source': source,
+                        'url': result.url
+                    }
+                }
+                topics_extracted = [topic_name]
+            else:
+                topic_source_mapping = {}
+                topics_extracted = []
+
+            return UnifiedToolResult(
                 success=result.success,
-                url=result.url,
-                title=result.title,
-                content=result.content,
-                word_count=result.word_count,
+                operation="scrape",
+                query=result.url,
+                sources=sources,
+                topics_extracted=topics_extracted,
+                topic_source_mapping=topic_source_mapping,
+                metadata={
+                    "word_count": result.word_count,
+                    "title": result.title
+                },
+                summary=f"Scraped {result.word_count} words from {result.url}" if result.success else None,
                 error=result.error_message
             )
         except Exception as e:
             logger.error(f"Scraper tool execution failed: {e}")
-            return ScraperToolResult(
+            return UnifiedToolResult(
                 success=False,
-                url=params.url,
+                operation="scrape",
+                query=params.url,
+                sources=[],
+                topics_extracted=[],
+                topic_source_mapping={},
+                metadata={},
+                summary=None,
                 error=str(e)
             )
 
@@ -279,7 +504,8 @@ class ReporterToolRegistry:
         self.tools = {
             "search": ReporterSearchTool(),
             "scrape": ReporterScraperTool(),
-            "youtube_search": YouTubeReporterTool(self.config_service)  # Add YouTube tool
+            "youtube_search": YouTubeReporterTool(self.config_service),  # Add YouTube tool
+            "fetch_from_memory": FetchFromMemoryTool()  # Add memory fetch tool
         }
 
     def get_all_tools(self) -> list[BaseTool]:
@@ -325,10 +551,16 @@ class ReporterToolRegistry:
         story_sources: list[StorySource] = []
         for result in search_results:
             if hasattr(result, "url") and hasattr(result, "title"):
+                # Get full content if available, otherwise use snippet/body
+                full_content = getattr(result, "content", None) or getattr(result, "full_text", None)
+                summary_text = getattr(result, "snippet", None) or getattr(result, "body", None)
+
                 source = StorySource(
                     url=result.url,
                     title=result.title,
-                    summary=getattr(result, "snippet", None) or getattr(result, "body", None),
+                    summary=summary_text,
+                    content=full_content,  # Include full scraped content if available
+                    source_type="search",
                     accessed_at=datetime.now()
                 )
                 story_sources.append(source)

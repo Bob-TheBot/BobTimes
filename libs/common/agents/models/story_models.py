@@ -23,6 +23,8 @@ class StorySource(BaseModel):
     url: str
     title: str
     summary: str | None = None
+    content: str | None = None  # Full content (transcript for YouTube, article text for web sources)
+    source_type: str | None = None  # Type of source (youtube, web, search, etc.)
     accessed_at: datetime = Field(default_factory=datetime.now)
 
 

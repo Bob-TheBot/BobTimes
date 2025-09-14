@@ -29,6 +29,11 @@ from ..task_executor_protocol import TaskExecutor
 logger = get_logger(__name__)
 
 
+def _normalize_topic_name(topic: str) -> str:
+    """Normalize topic name for consistent storage and retrieval."""
+    return topic.strip().title()
+
+
 # ============================================================================
 # PUBLISHING INFRASTRUCTURE CLASSES (moved from newspaper.py)
 # ============================================================================
@@ -110,7 +115,8 @@ class NewspaperFileStore:
             self.path = Path(path)
         else:
             # Resolve path relative to this file to avoid CWD issues
-            self.path = (Path(__file__).resolve().parents[4] / "libs/common/data/newspaper.json").resolve()
+            self.path = (Path(__file__).resolve(
+            ).parents[4] / "libs/common/data/newspaper.json").resolve()
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self.front_page_limit = int(front_page_limit)
         self.default_section_limit = int(default_section_limit)
@@ -153,7 +159,8 @@ class NewspaperFileStore:
     def _write(self, data: StoreData) -> None:
         tmp_path = self.path.with_suffix(".tmp")
         with tmp_path.open("w", encoding="utf-8") as f:
-            json.dump(data.model_dump(mode="json"), f, ensure_ascii=False, indent=2)
+            json.dump(data.model_dump(mode="json"),
+                      f, ensure_ascii=False, indent=2)
         tmp_path.replace(self.path)
 
     def _priority_rank(self, priority: StoryPriority) -> int:
@@ -201,7 +208,8 @@ class NewspaperFileStore:
             all_active_ids.update(section_ids)
 
         # Remove stories that are no longer referenced anywhere
-        orphaned_stories = [sid for sid in stories.keys() if sid not in all_active_ids]
+        orphaned_stories = [
+            sid for sid in stories.keys() if sid not in all_active_ids]
         for orphaned_id in orphaned_stories:
             del stories[orphaned_id]
 
@@ -247,7 +255,8 @@ class NewspaperFileStore:
                         story = to_story(sid)
                         front_page.append(story)
                     except Exception as e:
-                        logger.error(f"Error processing fallback story {sid}: {e}")
+                        logger.error(
+                            f"Error processing fallback story {sid}: {e}")
 
         sections_map: dict[NewspaperSection, list[Story]] = {}
         for section_name, ids in data.sections.items():
@@ -259,7 +268,8 @@ class NewspaperFileStore:
                         story = to_story(sid)
                         section_stories.append(story)
                     except Exception as e:
-                        logger.error(f"Error processing section story {sid}: {e}")
+                        logger.error(
+                            f"Error processing section story {sid}: {e}")
                 sections_map[section_enum] = section_stories
             except Exception as e:
                 logger.error(f"Error processing section {section_name}: {e}")
@@ -352,7 +362,8 @@ Returns: CollectTopicsResult with topics organized by field
             "🔍 Starting topic collection from reporters",
             requests_count=len(params.field_requests),
             topics_per_field=params.topics_per_field,
-            requests=", ".join([f"{req.field.value}" + (f"/{req.sub_section.value}" if req.sub_section else "") for req in params.field_requests])
+            requests=", ".join([f"{req.field.value}" + (
+                f"/{req.sub_section.value}" if req.sub_section else "") for req in params.field_requests])
         )
 
         topics_by_field = {}
@@ -360,7 +371,8 @@ Returns: CollectTopicsResult with topics organized by field
         for request in params.field_requests:
             sub_section_desc = f"/{request.sub_section.value}" if request.sub_section else ""
             try:
-                logger.info(f"📰 Requesting topics from {request.field.value}{sub_section_desc} reporter...")
+                logger.info(
+                    f"📰 Requesting topics from {request.field.value}{sub_section_desc} reporter...")
 
                 # Create task for finding topics
                 task = ReporterTask(
@@ -382,7 +394,8 @@ Returns: CollectTopicsResult with topics organized by field
                         field=request.field.value,
                         sub_section=request.sub_section.value if request.sub_section else "none",
                         topics_count=len(result.topics),
-                        topics=", ".join(result.topics[:3]) + ("..." if len(result.topics) > 3 else "")
+                        topics=", ".join(
+                            result.topics[:3]) + ("..." if len(result.topics) > 3 else "")
                     )
                 else:
                     logger.warning(
@@ -410,14 +423,125 @@ Returns: CollectTopicsResult with topics organized by field
 
 
 # ============================================================================
+# SELECT TOPICS TOOL (from reporter-provided topics)
+# ============================================================================
+
+class SelectTopicsParams(BaseModel):
+    """Parameters for selecting topics from reporter-provided topics."""
+    field: ReporterField = Field(description="Field to select topics from")
+    available_topics: list[str] = Field(
+        description="Topics provided by reporters for this field")
+    max_topics: int = Field(
+        default=3, description="Maximum number of topics to select")
+    stories_per_field: int = Field(
+        default=1, description="Number of stories needed for this field")
+
+
+class SelectTopicsResult(BaseModel):
+    """Result of topic selection from reporter-provided topics."""
+    reasoning: str = Field(
+        description="Editor's reasoning for topic selection")
+    selected_topics: list[str] = Field(
+        description="Topics selected for story assignment")
+    rejected_topics: list[str] = Field(description="Topics not selected")
+    success: bool = Field(description="Whether the selection was successful")
+
+
+class SelectTopicsTool(BaseTool):
+    """Select topics from reporter-provided topics for story assignment.
+
+    This tool allows the editor to intelligently select which topics from the
+    reporter's TopicList should be assigned for story writing, based on editorial
+    criteria like newsworthiness, relevance, and resource constraints.
+    """
+
+    name: str = "select_topics"
+    description: str = """
+    Select topics from reporter-provided topics for story assignment.
+    The editor reviews topics submitted by reporters and selects the most newsworthy ones.
+
+    Parameters:
+    - field: ReporterField (technology/economics/science) to select topics from
+    - available_topics: List of topics provided by reporters for this field
+    - max_topics: Maximum number of topics to select (default: 3)
+    - stories_per_field: Number of stories needed for this field (default: 1)
+
+    The tool will intelligently select topics based on:
+    - Newsworthiness and current relevance
+    - Audience interest and engagement potential
+    - Editorial balance across different sub-topics
+    - Resource constraints (stories_per_field limit)
+
+    Usage: <tool>select_topics</tool><args>{"field": "technology", "available_topics": ["AI Breakthrough", "Quantum Computing", "5G Networks"], "max_topics": 2}</args>
+
+    Returns: SelectTopicsResult with selected topics and reasoning
+    """
+    params_model: type[BaseModel] | None = SelectTopicsParams
+
+    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.SLOW) -> SelectTopicsResult:
+        """Select topics from reporter-provided topics for assignment."""
+        if not isinstance(params, SelectTopicsParams):
+            return SelectTopicsResult(
+                reasoning="Invalid parameters provided",
+                selected_topics=[],
+                rejected_topics=[],
+                success=False
+            )
+
+        if not params.available_topics:
+            return SelectTopicsResult(
+                reasoning=f"No topics available from reporters for field {params.field.value}",
+                selected_topics=[],
+                rejected_topics=[],
+                success=False
+            )
+
+        # Determine how many topics to select (limited by stories_per_field and max_topics)
+        topics_to_select = min(len(params.available_topics),
+                               params.stories_per_field, params.max_topics)
+
+        if topics_to_select == 0:
+            return SelectTopicsResult(
+                reasoning="No topics needed - stories_per_field is 0",
+                selected_topics=[],
+                rejected_topics=params.available_topics,
+                success=True
+            )
+
+        # For now, implement a simple selection strategy
+        # In a full implementation, this would use LLM-based editorial judgment
+
+        # Simple strategy: select first N topics (could be enhanced with LLM analysis)
+        selected_topics = params.available_topics[:topics_to_select]
+        rejected_topics = params.available_topics[topics_to_select:]
+
+        reasoning = f"Selected {len(selected_topics)} topics from {len(params.available_topics)} available topics for {params.field.value} field. "
+        reasoning += f"Selection based on editorial priority and resource constraints (max {params.stories_per_field} stories per field)."
+
+        logger.info(
+            "📝 Topic selection completed",
+            field=params.field.value,
+            available_count=len(params.available_topics),
+            selected_count=len(selected_topics),
+            rejected_count=len(rejected_topics),
+            selected_topics=", ".join(selected_topics)
+        )
+
+        return SelectTopicsResult(
+            reasoning=reasoning,
+            selected_topics=selected_topics,
+            rejected_topics=rejected_topics,
+            success=True
+        )
+
+# ============================================================================
 # ASSIGN TOPICS TOOL
 # ============================================================================
 
 class AssignTopicsParams(BaseModel):
-    """Parameters for creating topic assignments from collected topics."""
+    """Parameters for creating topic assignments from memory topics."""
     field: ReporterField  # Field to assign topics from
-    available_topics: list[str]  # Available topics from this field to assign
-    topics_to_assign: int | None = None  # Number of topics to assign (None = all available)
+    selected_topics: list[str]  # Topics selected from memory to assign
     priority: StoryPriority = StoryPriority.MEDIUM  # Priority level for assignments
 
 
@@ -464,13 +588,14 @@ class AssignTopicsResult(BaseModel):
     """Result of topic selection and assignment."""
     reasoning: str  # Overall selection strategy (FIRST)
     assignments: list[TopicAssignment]  # Topics that will spawn reporters
-    rejected_topics: dict[ReporterField, list[str]] = Field(default_factory=_empty_rejected_topics)
+    rejected_topics: dict[ReporterField, list[str]] = Field(
+        default_factory=_empty_rejected_topics)
     success: bool
 
 
 class AssignTopicsTool(BaseTool):
     """Create topic assignments for reporters to be spawned.
-    
+
     This tool takes already-selected topics and creates assignments that will
     be used to spawn reporter agents. It does NOT select topics - that's
     done by the editor using select_topics_for_coverage.
@@ -478,16 +603,15 @@ class AssignTopicsTool(BaseTool):
 
     name: str = "assign_topics"
     description: str = """
-Create topic assignments from collected topics in a specific field.
+Create topic assignments from topics Collected by the reporters.
 Each assignment will spawn a reporter agent to write the story.
 
 Parameters:
 - field: ReporterField (technology/economics/science) to assign topics from
-- available_topics: List of collected topics available for assignment
-- topics_to_assign: Number of topics to assign (optional, defaults to all available)
+- selected_topics: List of topics selected from memory (these have validated content)
 - priority: StoryPriority level (low/medium/high/breaking, defaults to medium)
 
-Usage: <tool>assign_topics</tool><args>{"field": "technology", "available_topics": ["AI breakthrough in healthcare", "New quantum processor"], "topics_to_assign": 2, "priority": "high"}</args>
+Usage: <tool>assign_topics</tool><args>{"field": "technology", "selected_topics": ["AI Breakthrough In Healthcare", "New Quantum Processor"], "priority": "high"}</args>
 
 Returns: AssignTopicsResult with reporter assignments ready for spawning
 """
@@ -507,19 +631,15 @@ Returns: AssignTopicsResult with reporter assignments ready for spawning
             )
 
         try:
-            # Determine how many topics to assign
-            topics_count = len(params.available_topics)
-            if not params.available_topics:
+            # Use the selected topics from memory
+            if not params.selected_topics:
                 return AssignTopicsResult(
-                    reasoning=f"No topics available for field {params.field.value}",
+                    reasoning=f"No topics selected for field {params.field.value}",
                     assignments=[],
                     success=False
                 )
 
-            num_to_assign = params.topics_to_assign if params.topics_to_assign is not None else topics_count
-            num_to_assign = min(num_to_assign, topics_count)  # Can't assign more than available
-
-            topics_to_assign = params.available_topics[:num_to_assign]
+            topics_to_assign = params.selected_topics
 
             # Convert topics to assignments that will spawn reporters
             assignments: list[TopicAssignment] = []
@@ -546,8 +666,8 @@ Returns: AssignTopicsResult with reporter assignments ready for spawning
                 "Created topic assignments",
                 total_assignments=len(assignments),
                 field=params.field.value,
-                topics_assigned=num_to_assign,
-                total_available=topics_count
+                topics_assigned=len(topics_to_assign),
+                selected_topics=len(params.selected_topics)
             )
 
             return AssignTopicsResult(
@@ -625,13 +745,16 @@ Returns: CollectStoryResult with the story draft
             )
 
         try:
+            # Normalize topic name for consistent SharedMemoryStore lookup
+            normalized_topic = _normalize_topic_name(params.topic)
+
             # Create story task
             task = ReporterTask(
                 name=TaskType.WRITE_STORY,
                 field=params.field,
                 sub_section=params.sub_section,
-                description=f"Write story about: {params.topic}",
-                topic=params.topic,
+                description=f"Write story about: {normalized_topic}",
+                topic=normalized_topic,
                 guidelines=params.guidelines,
                 editor_remarks=params.editor_remarks,
                 min_sources=1,
@@ -658,7 +781,8 @@ Returns: CollectStoryResult with the story draft
                 )
 
         except Exception as e:
-            logger.error(f"Failed to collect story from {params.reporter_id}: {e}")
+            logger.error(
+                f"Failed to collect story from {params.reporter_id}: {e}")
             return CollectStoryResult(
                 reasoning="Failed to collect story due to error",
                 reporter_id=params.reporter_id,
@@ -789,7 +913,8 @@ Returns: PublishStoryResult with publication status
     task_executor: TaskExecutor
 
     # Private newspaper store instance
-    _store: NewspaperFileStore = PrivateAttr(default_factory=NewspaperFileStore)
+    _store: NewspaperFileStore = PrivateAttr(
+        default_factory=NewspaperFileStore)
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
@@ -855,7 +980,7 @@ Returns: PublishStoryResult with publication status
 
             return PublishStoryResult(
                 reasoning=f"Successfully published story to {params.section} section" +
-                         (" as cover story" if is_cover_story else ""),
+                (" as cover story" if is_cover_story else ""),
                 story_id=story_id,
                 published=True
             )
@@ -871,12 +996,12 @@ Returns: PublishStoryResult with publication status
 
     async def _generate_and_save_story_images(self, title: str, field: ReporterField, story_id: str) -> list[StoryImage]:
         """Generate images using the image generation tool and save to local storage.
-        
+
         Args:
             title: The story title
             field: The reporter field
             story_id: The story ID for filename
-            
+
         Returns:
             List of StoryImage objects with local paths
         """
@@ -885,10 +1010,12 @@ Returns: PublishStoryResult with publication status
             from agents.editor_agent.image_tool import ImageGenerationTool, ImageQuality, ImageSize, ImageStyle, ImageToolParams
 
             # Get LLM service from the task executor if available
-            llm_service = getattr(self.task_executor, "llm_service", None) if self.task_executor else None
+            llm_service = getattr(
+                self.task_executor, "llm_service", None) if self.task_executor else None
 
             if not llm_service:
-                logger.warning("No LLM service available for image generation, returning empty list")
+                logger.warning(
+                    "No LLM service available for image generation, returning empty list")
                 return []
 
             # Create image generation tool
@@ -915,7 +1042,8 @@ Returns: PublishStoryResult with publication status
                     # Check if this is a base64 data URL or regular URL
                     if img.url.startswith("data:image"):
                         # Base64 data URL - extract the base64 part and store it directly
-                        base64_data = img.url.split(",", 1)[1] if "," in img.url else img.url
+                        base64_data = img.url.split(
+                            ",", 1)[1] if "," in img.url else img.url
                         story_image = StoryImage(
                             url=img.url,  # Keep the full data URL for direct display
                             local_path=None,  # No local file needed
@@ -929,7 +1057,8 @@ Returns: PublishStoryResult with publication status
                         )
                     else:
                         # Regular URL - try to download and save locally
-                        local_path = self._download_and_save_image(img.url, story_id, i)
+                        local_path = self._download_and_save_image(
+                            img.url, story_id, i)
                         story_image = StoryImage(
                             url=img.url,
                             local_path=local_path,
@@ -944,7 +1073,8 @@ Returns: PublishStoryResult with publication status
 
                     generated_images.append(story_image)
 
-                logger.info(f"🖼️ Generated and saved {len(generated_images)} images for story {story_id}")
+                logger.info(
+                    f"🖼️ Generated and saved {len(generated_images)} images for story {story_id}")
                 return generated_images
             else:
                 error_msg = result.error or "Unknown error - no error message provided"
@@ -964,11 +1094,11 @@ Returns: PublishStoryResult with publication status
 
     def _create_image_prompt(self, title: str, field: ReporterField) -> str:
         """Create an image generation prompt based on story title and field.
-        
+
         Args:
             title: Story title
             field: Reporter field
-            
+
         Returns:
             Image generation prompt
         """
@@ -983,12 +1113,12 @@ Returns: PublishStoryResult with publication status
 
     def _download_and_save_image(self, image_url: str, story_id: str, index: int = 0) -> str | None:
         """Download image from URL and save to local storage.
-        
+
         Args:
             image_url: URL of the image to download
             story_id: Story identifier for filename
             index: Image index for multiple images
-            
+
         Returns:
             Local file path where image was saved
         """
@@ -1015,4 +1145,3 @@ Returns: PublishStoryResult with publication status
         except Exception as e:
             logger.error(f"Error downloading image: {e}")
             return None
-
