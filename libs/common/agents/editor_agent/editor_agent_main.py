@@ -12,11 +12,13 @@ from agents.editor_agent.editor_models import EditorDecision, EditorInfoResponse
 from agents.editor_agent.editor_state import EditorState, EditorStateManager
 from agents.editor_agent.editor_tools import AssignTopicsTool, CollectStoryTool, CollectTopicsTool, PublishStoryTool, ReviewStoryTool
 from agents.models.submission_models import PublishedStory
+from agents.models.task_models import ReporterTask
 from agents.task_execution_service import TaskExecutionService
-from agents.types import EditorGoal, FieldTopicRequest, NewspaperSection, StoryPriority
+from agents.types import EditorGoal, FieldTopicRequest, NewspaperSection, ReporterField, StoryPriority, TaskType
 from core.config_service import ConfigService
 from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
+from utils.topic_memory_service import TopicMemoryService
 
 logger = get_logger(__name__)
 
@@ -40,6 +42,15 @@ class EditorAgent(BaseAgent):
         self.editor_id = editor_id or "editor-chief-001"
         self.task_service = task_service
         self.orchestrator = EditorExecutor(task_service, self.editor_id)
+        self.config_service = config_service or ConfigService()
+
+        # Initialize topic memory service
+        try:
+            self.topic_memory = TopicMemoryService(self.config_service)
+            logger.info(f"🧠 [EDITOR-{self.editor_id}] Topic memory service initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize topic memory service: {e}")
+            self.topic_memory = None
 
         # Initialize base agent with placeholder system prompt
         config = AgentConfig(
@@ -57,7 +68,7 @@ class EditorAgent(BaseAgent):
 
         super().__init__(
             config=config,
-            config_service=config_service or ConfigService()
+            config_service=self.config_service
         )
 
         # Now update the system prompt with tools available
@@ -69,6 +80,51 @@ class EditorAgent(BaseAgent):
             editor_id=self.editor_id,
             model_speed=config.default_model_speed.value,
             temperature=str(config.temperature)
+        )
+
+    def create_reporter_task_with_forbidden_topics(
+        self,
+        task_type: TaskType,
+        field: ReporterField,
+        description: str,
+        topic: str | None = None,
+        days_back: int = 30
+    ) -> ReporterTask:
+        """Create a reporter task with forbidden topics injected into guidelines.
+
+        Args:
+            task_type: Type of task (find_topics, write_story)
+            field: Reporter field
+            description: Task description
+            topic: Optional topic for write_story tasks
+            days_back: Number of days to look back for forbidden topics
+
+        Returns:
+            ReporterTask with forbidden topics in guidelines
+        """
+        # Get forbidden topics as formatted text
+        forbidden_text = ""
+        if self.topic_memory:
+            forbidden_text = self.topic_memory.get_forbidden_topics_as_text(days_back)
+        else:
+            forbidden_text = "Topic memory not available - no forbidden topics to avoid."
+
+        # Create enhanced guidelines with forbidden topics
+        enhanced_guidelines = f"""
+{description}
+
+{forbidden_text}
+
+IMPORTANT: Ensure your proposed topics are unique and not similar to the forbidden topics listed above.
+Focus on fresh angles and new developments that haven't been covered recently.
+"""
+
+        return ReporterTask(
+            name=task_type,
+            field=field,
+            description=description,
+            guidelines=enhanced_guidelines.strip(),
+            topic=topic
         )
 
     def _create_editorial_prompt(self, state: EditorState | None = None) -> str:

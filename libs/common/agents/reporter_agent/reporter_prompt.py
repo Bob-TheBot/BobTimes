@@ -292,6 +292,14 @@ The response must contain either:
             "",
         ]
 
+        # Add guidelines if provided (includes forbidden topics from editor)
+        if task.guidelines:
+            prompt_parts.extend([
+                "# EDITORIAL GUIDELINES",
+                task.guidelines,
+                "",
+            ])
+
         # Add task-specific instructions
         if task.name == TaskType.FIND_TOPICS:
             prompt_parts.extend(self._build_find_topics_instructions(task, state))

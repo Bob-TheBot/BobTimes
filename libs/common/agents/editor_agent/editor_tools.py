@@ -20,6 +20,9 @@ from agents.types import (
     TaskType,
     TechnologySubSection,
 )
+from core.config_service import ConfigService
+from utils.topic_memory_service import TopicMemoryService
+from utils.topic_memory_models import CoveredTopic
 from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr
@@ -916,7 +919,20 @@ Returns: PublishStoryResult with publication status
     _store: NewspaperFileStore = PrivateAttr(
         default_factory=NewspaperFileStore)
 
+    # Private topic memory service instance
+    _topic_memory: TopicMemoryService | None = PrivateAttr(default=None)
+
     model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    def __init__(self, **data: Any):
+        """Initialize with topic memory service."""
+        super().__init__(**data)
+        try:
+            config_service = ConfigService()
+            self._topic_memory = TopicMemoryService(config_service)
+        except Exception as e:
+            logger.error(f"Failed to initialize topic memory service: {e}")
+            self._topic_memory = None
 
     async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> PublishStoryResult:
         """Execute story publication."""
@@ -978,9 +994,23 @@ Returns: PublishStoryResult with publication status
             # Publish using local store
             self._store.publish(story)
 
+            # Add topic to memory for future deduplication
+            if self._topic_memory:
+                topic = CoveredTopic(
+                    title=params.story.title,
+                    description=params.story.summary,
+                    date_added=datetime.now().strftime("%Y-%m-%d")
+                )
+                success = self._topic_memory.add_topic(topic)
+                if success:
+                    logger.info(f"Added published story topic to memory: {params.story.title}")
+                else:
+                    logger.warning(f"Failed to add topic to memory: {params.story.title}")
+
             return PublishStoryResult(
                 reasoning=f"Successfully published story to {params.section} section" +
-                (" as cover story" if is_cover_story else ""),
+                (" as cover story" if is_cover_story else "") +
+                (" and added to topic memory" if self._topic_memory else ""),
                 story_id=story_id,
                 published=True
             )
