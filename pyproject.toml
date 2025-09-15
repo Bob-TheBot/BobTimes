@@ -21,11 +21,17 @@ dependencies = [
 ]
 
 [tool.uv.sources]
-common = { workspace = true }
 backend = { workspace = true }
+common = { workspace = true, editable = true }
 
 [tool.uv.workspace]
-members = ["libs/*/", "backend", "mcp_demo", "mcp_server"]
+members = [
+    "libs/*/",
+    "backend",
+    "mcp_demo",
+    "mcp_server",
+    "libs/common",
+]
 
 [tool.uv]
 package = false
