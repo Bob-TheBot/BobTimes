@@ -167,7 +167,7 @@ out/
 
 # Frontend development
 .env.local
-.env.development.local
+# .env.development.local
 .env.test.local
 .env.production.local
 
@@ -247,7 +247,7 @@ public/mockServiceWorker.js
 
 # Environment files
 .env
-.env.*
+# .env.*
 !.env.example
 !.env.template
 
