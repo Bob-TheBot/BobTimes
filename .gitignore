@@ -41,7 +41,7 @@ data/images/
 *.spec
 
 # Database files
-*.db
+
 *.sqlite
 *.sqlite3
 *.sqlite3-journal
@@ -269,3 +269,7 @@ generated_images/
 *.tar.gz
 *.rar
 *.7z
+
+# Include demo logs for MCP demo
+!mcp_demo/logs/
+!mcp_demo/logs/*.log

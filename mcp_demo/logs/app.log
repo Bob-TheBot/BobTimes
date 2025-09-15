@@ -1,0 +1,34 @@
+# ============== app.log - Server-side perspective ==============
+2025-05-03T20:00:00.000Z [INFO] server.main: TechNova CustomerLookup service started (version 2.3.1)
+2025-05-03T20:00:15.123Z [INFO] server.database: Connected to database at data/technova.db
+2025-05-03T20:00:30.456Z [INFO] server.mcp: MCP server initialized on STDIO transport
+
+# OAuth 2.1 Deployment
+2025-05-03T22:00:15.123Z [INFO] server.deployment: Starting deployment v2.4.0 (auth system upgrade)
+2025-05-03T22:15:33.456Z [INFO] server.deployment: Authentication module updated to OAuth 2.1
+2025-05-03T22:30:45.789Z [INFO] server.deployment: API gateway configuration updated
+2025-05-03T22:45:12.321Z [INFO] server.deployment: Legacy OAuth 2.0 tokens marked for deprecation
+2025-05-03T22:59:45.654Z [INFO] server.deployment: Deployment v2.4.0 completed successfully
+2025-05-03T23:00:00.000Z [INFO] server.system: All services restarted, system ready
+
+# Issues start appearing
+2025-05-04T08:15:22.123Z [ERROR] server.auth: Authentication failed for user sarah.johnson@acme.com - legacy token format rejected
+2025-05-04T08:15:45.456Z [ERROR] server.auth: Authentication failed for user robert.davis@acme.com - OAuth 2.0 token expired
+2025-05-04T08:16:12.789Z [WARN] server.auth: High authentication failure rate detected (78% failures in last 5 minutes)
+2025-05-04T08:16:45.321Z [ERROR] server.auth: Customer ACM001 - multiple users affected by token incompatibility
+2025-05-04T08:18:33.123Z [ERROR] server.api: API request to Salesforce failed - OAuth 2.0 credentials rejected (customer: ACM001)
+2025-05-04T08:18:34.456Z [ERROR] server.api: Salesforce integration error for ACM001: "Invalid client_id parameter - OAuth 2.1 required"
+2025-05-04T08:19:15.789Z [CRITICAL] server.integration: ACM001 Salesforce sync completely broken - legacy auth flow deprecated
+2025-05-04T08:20:15.789Z [ERROR] server.permissions: Access denied for user sarah.johnson@acme.com - role mapping lost during migration
+2025-05-04T08:20:16.123Z [ERROR] server.permissions: OAuth 2.1 scope mismatch for admin dashboard access
+2025-05-04T08:25:45.456Z [INFO] server.support: Ticket TKT-4601 auto-created: Mass authentication failure (ACM001)
+2025-05-04T08:27:12.789Z [INFO] server.support: Ticket TKT-4602 created: API Integration failure (ACM001)
+2025-05-04T08:29:33.123Z [INFO] server.support: Ticket TKT-4603 created: Permission system broken (ACM001)
+2025-05-04T09:15:45.456Z [ERROR] server.auth: Batch authentication failure - 15 ACM001 users locked out
+2025-05-04T09:30:22.789Z [WARN] server.migration: OAuth 2.0 to 2.1 migration incomplete for customer ACM001
+2025-05-04T10:15:33.456Z [ERROR] server.api: All third-party integrations failing for ACM001 - auth token format mismatch
+2025-05-04T10:30:22.789Z [ERROR] server.api: Salesforce API timeout for ACM001 - connection pool exhausted from retry attempts
+2025-05-04T11:45:15.123Z [WARN] server.permissions: Default role assignments not working after OAuth 2.1 upgrade
+2025-05-04T12:15:45.456Z [INFO] server.escalation: ACM001 case escalated to engineering team - OAuth migration failure
+2025-05-04T14:22:33.456Z [WARN] server.monitoring: Customer satisfaction alert - ACM001 portal usage down 85%
+2025-05-04T15:15:22.789Z [CRITICAL] server.sla: SLA breach detected for customer ACM001 - 7+ hours of service degradation

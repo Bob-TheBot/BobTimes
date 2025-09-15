@@ -491,6 +491,266 @@ Always verify the source credibility before using scraped content in stories.
             )
 
 
+# ============================================================================
+# Tavily MCP-backed Tools (Search/Scrape)
+# ============================================================================
+class TavilyMCPSearchTool(BaseTool):
+    """Search tool powered by Tavily MCP.
+
+    Falls back to existing parsing if response schema varies.
+    """
+
+    def __init__(self, config_service: ConfigService | None = None) -> None:
+        name = "search"
+        description = f"""
+Use Tavily MCP for real-time web/news search.
+
+PARAMETER SCHEMA:
+{SearchParams.model_json_schema()}
+
+Guidelines:
+- Prefer NEWS for current events; TEXT for background.
+- Results are normalized to CleanedSearchResult and StorySource.
+"""
+        super().__init__(name=name, description=description)
+        self.params_model = SearchParams
+        self.config_service = config_service or ConfigService()
+
+    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> UnifiedToolResult:
+        if not isinstance(params, SearchParams):
+            raise ValueError(f"Expected SearchParams, got {type(params)}")
+
+        # Lazy import to avoid hard dependency if not configured
+        try:
+            from mcp.tavily_mcp_client import TavilyMCPClient  # type: ignore
+        except Exception as e:
+            logger.error(f"TavilyMCPClient import failed: {e}")
+            return UnifiedToolResult(
+                success=False,
+                operation="search",
+                query=params.query,
+                sources=[],
+                topics_extracted=[],
+                topic_source_mapping={},
+                metadata={},
+                summary=None,
+                error="Tavily MCP client unavailable. Please install fastmcp and configure tavily.api_key"
+            )
+
+        client = TavilyMCPClient(self.config_service)
+        try:
+            await client.connect()
+
+            # Resolve a search tool name from Tavily server
+            tool_name = await client.resolve_tool(["search", "tavily_search", "web_search"])
+            if not tool_name:
+                raise RuntimeError("No Tavily search tool found on MCP server")
+
+            args: dict[str, Any] = {"query": params.query}
+            raw = await client.call_tool(tool_name, arguments=args)
+
+            # Normalize results into CleanedSearchResult
+            cleaned_results: list[CleanedSearchResult] = []
+            try:
+                payload = raw
+                if isinstance(raw, dict) and "content" in raw and isinstance(raw["content"], (str, list)):
+                    payload = raw.get("results") or raw.get("data") or raw
+
+                if isinstance(payload, dict) and "results" in payload:
+                    items = payload.get("results") or []
+                elif isinstance(payload, list):
+                    items = payload
+                else:
+                    items = []
+
+                for item in items:
+                    if isinstance(item, dict):
+                        title = str(item.get("title") or item.get("url") or params.query)
+                        url = str(item.get("url") or "")
+                        snippet = str(item.get("snippet") or item.get("content") or item.get("text") or "")
+                        cleaned_results.append(
+                            CleanedSearchResult(
+                                title=title,
+                                url=url,
+                                content=snippet,
+                                image_url=None,
+                                image_local_path=None,
+                                image_size_kb=None,
+                                source=item.get("source"),
+                                date=item.get("published_date") or item.get("date"),
+                            )
+                        )
+                # Fallback: single blob response
+                if not cleaned_results and isinstance(raw, str):
+                    cleaned_results.append(
+                        CleanedSearchResult(
+                            title=params.query,
+                            url="",
+                            content=raw,
+                            image_url=None,
+                            image_local_path=None,
+                            image_size_kb=None,
+                            source=None,
+                            date=None,
+                        )
+                    )
+            except Exception as e:
+                logger.error(f"Failed to parse Tavily search response: {e}")
+
+            topics_extracted, topic_source_mapping = _extract_topics_from_search_results(cleaned_results, params.query)
+            story_sources = ResearcherToolRegistry.convert_search_results_to_sources(cleaned_results)
+
+            return UnifiedToolResult(
+                success=True,
+                operation="search",
+                query=params.query,
+                sources=story_sources,
+                topics_extracted=topics_extracted,
+                topic_source_mapping=topic_source_mapping,
+                metadata={"provider": "tavily_mcp", "results_count": len(cleaned_results)},
+                summary=f"Found {len(cleaned_results)} Tavily results for '{params.query}'",
+                error=None,
+            )
+        except Exception as e:
+            logger.error(f"Tavily MCP search execution failed: {e}")
+            return UnifiedToolResult(
+                success=False,
+                operation="search",
+                query=params.query,
+                sources=[],
+                topics_extracted=[],
+                topic_source_mapping={},
+                metadata={"provider": "tavily_mcp"},
+                summary=None,
+                error=str(e),
+            )
+        finally:
+            try:
+                await client.close()
+            except Exception:
+                pass
+
+
+class TavilyMCPScrapeTool(BaseTool):
+    """Scrape/Read tool powered by Tavily MCP with graceful fallback to Playwright."""
+
+    def __init__(self, config_service: ConfigService | None = None) -> None:
+        name = "scrape"
+        description = f"""
+Read full content from a specific URL using Tavily MCP. Falls back to Playwright if Tavily read tool isn't available.
+
+PARAMETER SCHEMA:
+{ScrapeParams.model_json_schema()}
+"""
+        super().__init__(name=name, description=description)
+        self.params_model = ScrapeParams
+        self.config_service = config_service or ConfigService()
+
+    async def _try_tavily(self, url: str) -> tuple[bool, dict[str, Any]]:
+        try:
+            from mcp.tavily_mcp_client import TavilyMCPClient  # type: ignore
+            client = TavilyMCPClient(self.config_service)
+            await client.connect()
+            tool_name = await client.resolve_tool([
+                "browse", "read", "get_content", "scrape", "web.get", "url_to_text"
+            ])
+            if not tool_name:
+                return False, {"error": "No Tavily content tool found"}
+            raw = await client.call_tool(tool_name, {"url": url})
+            await client.close()
+            # Normalize
+            title = None
+            content = None
+            if isinstance(raw, dict):
+                title = raw.get("title") or raw.get("page_title")
+                content = raw.get("content") or raw.get("text") or raw.get("body")
+            elif isinstance(raw, str):
+                content = raw
+            if content:
+                return True, {"title": title, "content": content}
+            return False, {"error": "No content returned from Tavily"}
+        except Exception as e:
+            return False, {"error": str(e)}
+
+    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> UnifiedToolResult:
+        if not isinstance(params, ScrapeParams):
+            raise ValueError(f"Expected ScrapeParams, got {type(params)}")
+
+        # First try Tavily MCP
+        ok, data = await self._try_tavily(params.url)
+        if ok:
+            content = data.get("content") or ""
+            title = data.get("title") or "Scraped Content"
+            source = StorySource(
+                url=params.url,
+                title=title,
+                summary=content[:200] + "..." if len(content) > 200 else content,
+                content=content,
+                source_type="scrape",
+                accessed_at=datetime.now(),
+            )
+            topic = _normalize_topic_name(title or params.url.split("/")[-1])
+            return UnifiedToolResult(
+                success=True,
+                operation="scrape",
+                query=params.url,
+                sources=[source],
+                topics_extracted=[topic],
+                topic_source_mapping={topic: {"source": source, "url": params.url}},
+                metadata={"provider": "tavily_mcp", "word_count": len(content.split())},
+                summary=f"Fetched content from {params.url}",
+                error=None,
+            )
+
+        # Fallback to Playwright scraper
+        try:
+            from utils.playwright_scraper import AsyncPlaywrightScraper
+            scraper_tool = AsyncPlaywrightScraper(timeout=60, wait_time=3000, headless=True, handle_interactive_content=True, max_content_buttons=3)
+            result = await scraper_tool.scrape_url(params.url)
+            sources = []
+            if result.success and result.content:
+                source = StorySource(
+                    url=result.url,
+                    title=result.title or "Scraped Content",
+                    summary=result.content[:200] + "..." if len(result.content) > 200 else result.content,
+                    content=result.content,
+                    source_type="scrape",
+                    accessed_at=datetime.now(),
+                )
+                sources.append(source)
+                topic_name = _normalize_topic_name(result.title or result.url.split("/")[-1])
+                topic_source_mapping = {topic_name: {"source": source, "url": result.url}}
+                topics_extracted = [topic_name]
+            else:
+                topic_source_mapping = {}
+                topics_extracted = []
+
+            return UnifiedToolResult(
+                success=result.success,
+                operation="scrape",
+                query=params.url,
+                sources=sources,
+                topics_extracted=topics_extracted,
+                topic_source_mapping=topic_source_mapping,
+                metadata={"provider": "playwright", "word_count": result.word_count, "title": result.title},
+                summary=f"Scraped {result.word_count} words from {result.url}" if result.success else None,
+                error=result.error_message,
+            )
+        except Exception as e:
+            logger.error(f"Scraper tool execution failed: {e}")
+            return UnifiedToolResult(
+                success=False,
+                operation="scrape",
+                query=params.url,
+                sources=[],
+                topics_extracted=[],
+                topic_source_mapping={},
+                metadata={"provider": "playwright"},
+                summary=None,
+                error=str(e),
+            )
+
+
 class ResearcherToolRegistry:
     """Registry for researcher tools with automatic schema generation."""
 
@@ -501,11 +761,19 @@ class ResearcherToolRegistry:
         # Import YouTube tool here to avoid circular imports
         from utils.youtube_tool import YouTubeResearcherTool
 
+        # Prefer Tavily MCP tools when API key is configured; fallback otherwise
+        if self.config_service.get("tavily.api_key"):
+            search_tool = TavilyMCPSearchTool(self.config_service)
+            scrape_tool = TavilyMCPScrapeTool(self.config_service)
+        else:
+            search_tool = ResearcherSearchTool()
+            scrape_tool = ResearcherScraperTool()
+
         self.tools = {
-            "search": ResearcherSearchTool(),
-            "scrape": ResearcherScraperTool(),
+            "search": search_tool,
+            "scrape": scrape_tool,
             "youtube_search": YouTubeResearcherTool(self.config_service),  # Add YouTube tool
-            "fetch_from_memory": FetchFromMemoryTool()  # Add memory fetch tool
+            "fetch_from_memory": FetchFromMemoryTool(),  # Add memory fetch tool
         }
 
     def get_all_tools(self) -> list[BaseTool]:

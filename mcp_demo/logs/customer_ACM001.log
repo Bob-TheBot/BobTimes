@@ -1,0 +1,25 @@
+
+# ============== customer_ACM001.log - Customer-side perspective ==============
+# Customer ACM001 (Acme Inc) Activity Log
+# Generated: 2025-05-04T15:30:22.145Z
+
+2025-05-03T16:45:22.123Z [INFO] customer.ACM001.login: User sarah.johnson@acme.com logged in successfully (OAuth 2.0)
+2025-05-03T16:46:15.456Z [INFO] customer.ACM001.view: sarah.johnson@acme.com accessed API integration dashboard
+2025-05-03T16:47:30.789Z [INFO] customer.ACM001.api: Salesforce sync completed successfully (1,247 records)
+2025-05-03T17:15:33.789Z [INFO] customer.ACM001.logout: User sarah.johnson@acme.com logged out successfully
+2025-05-03T18:30:15.123Z [INFO] customer.ACM001.scheduled: Automated Salesforce data sync completed (evening batch)
+
+2025-05-04T08:15:22.123Z [ERROR] customer.ACM001.login: Login failed for sarah.johnson@acme.com - session token invalid
+2025-05-04T08:15:30.456Z [ERROR] customer.ACM001.login: Auto-retry failed - OAuth 2.0 token format no longer supported
+2025-05-04T08:15:45.456Z [ERROR] customer.ACM001.login: Login failed for robert.davis@acme.com - authentication service unavailable
+2025-05-04T08:16:12.789Z [ERROR] customer.ACM001.login: Login failed for john.smith@acme.com - token expired immediately after validation
+2025-05-04T08:16:45.321Z [ERROR] customer.ACM001.session: All existing user sessions terminated - OAuth version mismatch
+2025-05-04T08:18:33.123Z [ERROR] customer.ACM001.api: Salesforce API call failed - credential validation error (OAuth 2.1 required)
+2025-05-04T08:18:34.456Z [ERROR] customer.ACM001.api: Salesforce sync broken - client_id not recognized by new auth system
+2025-05-04T08:19:15.789Z [ERROR] customer.ACM001.integration: HubSpot connector authentication failed - OAuth scope mismatch
+2025-05-04T08:20:15.789Z [ERROR] customer.ACM001.access: sarah.johnson@acme.com denied access to admin dashboard - OAuth 2.1 permissions not migrated
+2025-05-04T08:20:30.123Z [ERROR] customer.ACM001.access: robert.davis@acme.com cannot access user management - role mapping lost in upgrade
+2025-05-04T08:21:45.456Z [ERROR] customer.ACM001.api: Slack integration offline - webhook authentication rejected
+2025-05-04T08:25:45.456Z [INFO] customer.ACM001.support: TKT-4601 created by robert.davis@acme.com: "Users unable to log in after recent system update"
+2025-05-04T08:27:12.789Z [INFO] customer.ACM001.support: TKT-4602 created by sarah.johnson@acme.com: "Salesforce API completely broken - urgent business impact"
+2025-05-04T08:29:33.123Z [INFO] customer.ACM001.support: TKT-4603 created by sarah.johnson@acme.com: "Admin dashboard access denied for all users"
