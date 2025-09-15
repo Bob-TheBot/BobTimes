@@ -75,14 +75,15 @@
             line-height: 1.6;
             border: 1px solid var(--neutral-700);
             box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+            white-space: pre-wrap;
         }
         
-        .syntax-highlight .keyword { color: #f59e0b; font-weight: 600; }
-        .syntax-highlight .string { color: #10b981; }
-        .syntax-highlight .comment { color: #6b7280; font-style: italic; }
-        .syntax-highlight .function { color: #3b82f6; font-weight: 500; }
-        .syntax-highlight .property { color: #8b5cf6; }
-        .syntax-highlight .number { color: #f97316; }
+        .code-block .keyword { color: #f59e0b; font-weight: 600; }
+        .code-block .string { color: #10b981; }
+        .code-block .comment { color: #6b7280; font-style: italic; }
+        .code-block .function { color: #3b82f6; font-weight: 500; }
+        .code-block .property { color: #8b5cf6; }
+        .code-block .number { color: #f97316; }
         
         .transport-card {
             border: 2px solid transparent;
@@ -539,7 +540,7 @@
                         </div>
                         <div class="code-block text-xs">
 <span class="comment"># FastMCP Configuration</span>
-mcp.run(
+mcp.<span class="function">run</span>(
   transport=<span class="string">"streamable-http"</span>,
   host=<span class="string">"0.0.0.0"</span>,
   port=<span class="number">8001</span>
@@ -606,7 +607,7 @@ mcp.run(
                         </div>
                         <div class="code-block text-xs">
 <span class="comment"># Legacy - Not Recommended</span>
-mcp.run(
+mcp.<span class="function">run</span>(
   transport=<span class="string">"sse"</span>
 )
                         </div>
@@ -858,12 +859,12 @@ mcp.run(
 <span class="keyword">def</span> <span class="function">get_app_logs</span>() -> <span class="keyword">str</span>:
     <span class="string">"""Get application logs."""</span>
     <span class="keyword">with</span> <span class="function">open</span>(<span class="string">"app.log"</span>) <span class="keyword">as</span> f:
-        <span class="keyword">return</span> f.read()
+        <span class="keyword">return</span> f.<span class="function">read</span>()
 
 <span class="keyword">@mcp.resource</span>(<span class="string">"customer://{{customer_id}}/logs"</span>)
 <span class="keyword">def</span> <span class="function">get_customer_logs</span>(customer_id: <span class="keyword">str</span>) -> <span class="keyword">str</span>:
     <span class="string">"""Get logs for specific customer."""</span>
-    <span class="keyword">return</span> load_customer_logs(customer_id)
+    <span class="keyword">return</span> <span class="function">load_customer_logs</span>(customer_id)
                         </div>
                     </div>
                 </div>
@@ -1033,7 +1034,7 @@ mcp = FastMCP(<span class="string">"Calculator"</span>)
     <span class="keyword">return</span> a + b
 
 <span class="keyword">if</span> __name__ == <span class="string">"__main__"</span>:
-    mcp.run()
+    mcp.<span class="function">run</span>()
 
 <span class="comment"># That's it! Schema, validation, transport - all handled automatically</span>
                         </div>
@@ -1110,7 +1111,7 @@ mcp = FastMCP(<span class="string">"MyServer"</span>)
                             <h3 class="font-semibold mb-2">Run Your Server</h3>
                             <div class="code-block">
 <span class="keyword">if</span> __name__ == <span class="string">"__main__"</span>:
-    mcp.run(transport=<span class="string">"streamable-http"</span>, port=<span class="number">8001</span>)
+    mcp.<span class="function">run</span>(transport=<span class="string">"streamable-http"</span>, port=<span class="number">8001</span>)
                             </div>
                         </div>
                     </div>
@@ -1146,19 +1147,19 @@ mcp = FastMCP(<span class="string">"CustomerSupport"</span>)
     status: <span class="keyword">str</span> = <span class="string">"open"</span>
 ) -> <span class="keyword">list</span>:
     <span class="string">"""Get support tickets for customer."""</span>
-    conn = sqlite3.connect(<span class="string">"support.db"</span>)
-    cursor = conn.execute(
+    conn = sqlite3.<span class="function">connect</span>(<span class="string">"support.db"</span>)
+    cursor = conn.<span class="function">execute</span>(
         <span class="string">"SELECT * FROM tickets WHERE customer_id=? AND status=?"</span>,
         (customer_id, status)
     )
-    <span class="keyword">return</span> cursor.fetchall()
+    <span class="keyword">return</span> cursor.<span class="function">fetchall</span>()
 
 <span class="comment"># Resource: Application logs</span>
 <span class="keyword">@mcp.resource</span>(<span class="string">"logs://application"</span>)
 <span class="keyword">def</span> <span class="function">get_app_logs</span>() -> <span class="keyword">str</span>:
     <span class="string">"""Get application logs."""</span>
     <span class="keyword">with</span> <span class="function">open</span>(<span class="string">"app.log"</span>) <span class="keyword">as</span> f:
-        <span class="keyword">return</span> f.read()
+        <span class="keyword">return</span> f.<span class="function">read</span>()
 
 <span class="comment"># Prompt: Issue analysis</span>
 <span class="keyword">@mcp.prompt</span>(<span class="string">"analyze-issue"</span>)
