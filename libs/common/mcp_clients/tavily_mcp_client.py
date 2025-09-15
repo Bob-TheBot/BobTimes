@@ -16,9 +16,11 @@ from core.logging_service import get_logger
 logger = get_logger(__name__)
 
 try:  # Optional dependency
-    from fastmcp import FastMCPClient
+    from fastmcp import Client
+    from fastmcp.client.transports import NpxStdioTransport
 except Exception:  # pragma: no cover - missing optional dep
-    FastMCPClient = None  
+    Client = None  
+    NpxStdioTransport = None
 
 
 class TavilyMCPClient:
@@ -35,43 +37,43 @@ class TavilyMCPClient:
     def __init__(self, config_service: ConfigService, timeout: int = 60) -> None:
         self.config_service = config_service
         self.timeout = timeout
-        self._client: Optional[FastMCPClient] = None  # type: ignore
+        self._client: Client | None = None  # type: ignore
 
-    def _build_command(self) -> tuple[str, list[str], dict[str, str]]:
+    def _build_command(self) -> tuple[str, dict[str, str]]:
         api_key = self._get_api_key()
         if not api_key:
             raise RuntimeError(
-                "Tavily API key is not configured. Add tavily.api_key to libs/common/secrets.yaml"
+                "Tavily API key is not configured. Add tavily.api_key (or 'tavili.api_key') to libs/common/secrets.yaml"
             )
         # Use MCP Remote to connect to the hosted Tavily MCP HTTP endpoint
         base_url = "https://mcp.tavily.com/mcp/"
         full_url = f"{base_url}?tavilyApiKey={api_key}"
-        command = "npx"
-        args = ["-y", "mcp-remote", full_url]
         env: dict[str, str] = {}
-        return command, args, env
+        return full_url, env
 
     def _get_api_key(self) -> str:
-        value = self.config_service.get("tavily.api_key")
+        value = self.config_service.get("tavily.api_key") or self.config_service.get("tavili.api_key")
         return str(value) if value else ""
 
     async def connect(self) -> None:
-        if FastMCPClient is None:
+        if Client is None or NpxStdioTransport is None:
             raise RuntimeError(
                 "fastmcp is not installed. Please run: uv add fastmcp (in the workspace root)"
             )
         if self._client is not None:
             return
-        command, args, env = self._build_command()
-        client = FastMCPClient(command=command, args=args, env=env, timeout=self.timeout)  # type: ignore
-        await client.connect()
+        remote_url, env = self._build_command()
+        transport = NpxStdioTransport(package="mcp-remote", args=[remote_url], env_vars=env, keep_alive=None)
+        client = Client(transport)
+        # Use async context manager lifecycle methods to open the session
+        await client.__aenter__()
         self._client = client
-        logger.info("Connected to Tavily MCP via mcp-remote", command=command)
+        logger.info("Connected to Tavily MCP via mcp-remote", url=remote_url)
 
     async def close(self) -> None:
         if self._client is not None:
             try:
-                await self._client.close()
+                await self._client.__aexit__(None, None, None)
             finally:
                 self._client = None
 

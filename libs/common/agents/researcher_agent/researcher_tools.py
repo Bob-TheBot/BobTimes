@@ -3,6 +3,7 @@
 from datetime import datetime
 from enum import StrEnum
 from typing import Any
+import json
 
 from agents.models.search_models import CleanedSearchResult
 from agents.models.story_models import StorySource
@@ -10,7 +11,7 @@ from agents.tools.base_tool import BaseTool, UnifiedToolResult
 from core.config_service import ConfigService
 from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 logger = get_logger(__name__)
 
@@ -500,6 +501,8 @@ class TavilyMCPSearchTool(BaseTool):
     Falls back to existing parsing if response schema varies.
     """
 
+    _config_service: ConfigService | None = PrivateAttr(default=None)
+
     def __init__(self, config_service: ConfigService | None = None) -> None:
         name = "search"
         description = f"""
@@ -514,7 +517,7 @@ Guidelines:
 """
         super().__init__(name=name, description=description)
         self.params_model = SearchParams
-        self.config_service = config_service or ConfigService()
+        self._config_service = config_service or ConfigService()
 
     async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> UnifiedToolResult:
         if not isinstance(params, SearchParams):
@@ -522,7 +525,7 @@ Guidelines:
 
         # Lazy import to avoid hard dependency if not configured
         try:
-            from mcp.tavily_mcp_client import TavilyMCPClient  # type: ignore
+            from mcp_clients.tavily_mcp_client import TavilyMCPClient  # type: ignore
         except Exception as e:
             logger.error(f"TavilyMCPClient import failed: {e}")
             return UnifiedToolResult(
@@ -537,7 +540,7 @@ Guidelines:
                 error="Tavily MCP client unavailable. Please install fastmcp and configure tavily.api_key"
             )
 
-        client = TavilyMCPClient(self.config_service)
+        client = TavilyMCPClient(self._config_service)
         try:
             await client.connect()
 
@@ -553,9 +556,34 @@ Guidelines:
             cleaned_results: list[CleanedSearchResult] = []
             try:
                 payload = raw
-                if isinstance(raw, dict) and "content" in raw and isinstance(raw["content"], (str, list)):
-                    payload = raw.get("results") or raw.get("data") or raw
+                # Handle FastMCP CallToolResult shape: has .content which may include text or json
+                if hasattr(raw, "content") and isinstance(getattr(raw, "content"), list):
+                    for part in getattr(raw, "content"):
+                        # Try JSON content first
+                        data = None
+                        if hasattr(part, "json") and getattr(part, "json") is not None:
+                            data = getattr(part, "json")
+                        elif isinstance(part, dict) and part.get("type") == "json" and "json" in part:
+                            data = part.get("json")
+                        elif hasattr(part, "text") and isinstance(getattr(part, "text"), str):
+                            # Sometimes text holds JSON string
+                            try:
+                                data = json.loads(getattr(part, "text"))
+                            except Exception:
+                                data = None
+                        elif isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str):
+                            try:
+                                data = json.loads(part.get("text", ""))
+                            except Exception:
+                                data = None
 
+                        if isinstance(data, dict):
+                            # Tavily tools often return {"results": [...]} in json
+                            payload = data.get("results") or data
+                        elif isinstance(data, list):
+                            payload = data
+
+                # Handle plain dict/list payloads as before
                 if isinstance(payload, dict) and "results" in payload:
                     items = payload.get("results") or []
                 elif isinstance(payload, list):
@@ -580,7 +608,24 @@ Guidelines:
                                 date=item.get("published_date") or item.get("date"),
                             )
                         )
-                # Fallback: single blob response
+                # Fallbacks: content array with text, or raw string
+                if not cleaned_results and hasattr(raw, "content"):
+                    for part in getattr(raw, "content") or []:
+                        text = getattr(part, "text", None) if hasattr(part, "text") else (part.get("text") if isinstance(part, dict) else None)
+                        if isinstance(text, str) and text.strip():
+                            cleaned_results.append(
+                                CleanedSearchResult(
+                                    title=params.query,
+                                    url="",
+                                    content=text,
+                                    image_url=None,
+                                    image_local_path=None,
+                                    image_size_kb=None,
+                                    source=None,
+                                    date=None,
+                                )
+                            )
+                            break
                 if not cleaned_results and isinstance(raw, str):
                     cleaned_results.append(
                         CleanedSearchResult(
@@ -634,6 +679,8 @@ Guidelines:
 class TavilyMCPScrapeTool(BaseTool):
     """Scrape/Read tool powered by Tavily MCP with graceful fallback to Playwright."""
 
+    _config_service: ConfigService | None = PrivateAttr(default=None)
+
     def __init__(self, config_service: ConfigService | None = None) -> None:
         name = "scrape"
         description = f"""
@@ -644,12 +691,12 @@ PARAMETER SCHEMA:
 """
         super().__init__(name=name, description=description)
         self.params_model = ScrapeParams
-        self.config_service = config_service or ConfigService()
+        self._config_service = config_service or ConfigService()
 
     async def _try_tavily(self, url: str) -> tuple[bool, dict[str, Any]]:
         try:
-            from mcp.tavily_mcp_client import TavilyMCPClient  # type: ignore
-            client = TavilyMCPClient(self.config_service)
+            from mcp_clients.tavily_mcp_client import TavilyMCPClient  # type: ignore
+            client = TavilyMCPClient(self._config_service)
             await client.connect()
             tool_name = await client.resolve_tool([
                 "browse", "read", "get_content", "scrape", "web.get", "url_to_text"
@@ -661,10 +708,32 @@ PARAMETER SCHEMA:
             # Normalize
             title = None
             content = None
-            if isinstance(raw, dict):
+            # FastMCP CallToolResult with content parts
+            if hasattr(raw, "content") and isinstance(getattr(raw, "content"), list):
+                for part in getattr(raw, "content"):
+                    # Prefer json payload
+                    data = None
+                    if hasattr(part, "json") and getattr(part, "json") is not None:
+                        data = getattr(part, "json")
+                    elif isinstance(part, dict) and part.get("type") == "json" and "json" in part:
+                        data = part.get("json")
+                    elif hasattr(part, "text") and isinstance(getattr(part, "text"), str):
+                        # Sometimes text holds raw content
+                        data = {"content": getattr(part, "text")}
+                    elif isinstance(part, dict) and part.get("type") == "text" and isinstance(part.get("text"), str):
+                        data = {"content": part.get("text")}
+
+                    if isinstance(data, dict):
+                        title = data.get("title") or data.get("page_title") or title
+                        c = data.get("content") or data.get("text") or data.get("body")
+                        if isinstance(c, str) and c.strip():
+                            content = c
+                            break
+            # Plain dict or string
+            if content is None and isinstance(raw, dict):
                 title = raw.get("title") or raw.get("page_title")
                 content = raw.get("content") or raw.get("text") or raw.get("body")
-            elif isinstance(raw, str):
+            elif content is None and isinstance(raw, str):
                 content = raw
             if content:
                 return True, {"title": title, "content": content}
@@ -762,7 +831,7 @@ class ResearcherToolRegistry:
         from utils.youtube_tool import YouTubeResearcherTool
 
         # Prefer Tavily MCP tools when API key is configured; fallback otherwise
-        if self.config_service.get("tavily.api_key"):
+        if self.config_service.get("tavily.api_key") or self.config_service.get("tavili.api_key"):
             search_tool = TavilyMCPSearchTool(self.config_service)
             scrape_tool = TavilyMCPScrapeTool(self.config_service)
         else:

@@ -13,7 +13,9 @@
     "playwright.configFile": "./client/playwright.config.ts",
     "playwright.workingDir": "./client",
     "cSpell.words": [
+        "cand",
         "FAISS",
+        "fastmcp",
         "retriable"
     ]
 }
