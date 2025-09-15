@@ -19,6 +19,21 @@ By the end of this lab, you will:
 - ✅ Understanding of the editor-reporter workflow
 - ✅ Basic knowledge of file-based persistence
 
+## What You Will Build (Goal)
+
+In this lab, you will give the editor a lightweight, file‑backed memory of recently covered topics and use it to prevent duplicate coverage by injecting a FORBIDDEN TOPICS block into reporter task guidelines.
+
+Success criteria:
+- A JSON file at data/topics/covered_topics.json is created and updated
+- Reporter tasks include a FORBIDDEN TOPICS block in guidelines
+- After publishing a story, its topic is appended to memory
+- A quick test prints forbidden topics and similarity results
+
+You will implement:
+- Topic memory models and a TopicMemoryService (file-based persistence)
+- Editor-side helper that injects forbidden topics into ReporterTask.guidelines
+- Small tests and a utility script to inspect/manage the memory
+
 ## 🚀 Step 1: Design the Topic Memory System
 
 ### 1.1 Topic Memory Architecture
@@ -60,10 +75,10 @@ The system will work as follows:
 }
 ```
 
-**Key Design Decisions:**
-- Focused on essential fields only: `title`, `description`, `date_added`
-- Removed complex categorization - not needed for basic deduplication
+**Key Design Choices:**
+- Essential fields only: `title`, `description`, `date_added`
 - Simple date-based filtering for recent topics
+- Designed for prompt injection into reporter guidelines
 
 ### 1.3 Workflow Design
 
@@ -352,6 +367,55 @@ editor.add_published_story_to_memory(
 """
 ```
 
+#### 3.1b Minimal example (uses current ReporterTask)
+
+```python
+from core.config_service import ConfigService
+from agents.models.task_models import ReporterTask
+from agents.types import TaskType, ReporterField
+from utils.topic_memory_service import TopicMemoryService
+
+config = ConfigService()
+### 3.3 Integrate Forbidden Topics in Current Editor Orchestration (no structural changes)
+
+Inject the FORBIDDEN TOPICS text when creating reporter tasks inside the existing CollectTopicsTool. This requires no class/interface changes.
+
+Example (excerpt to adapt in agents/editor_agent/editor_tools.py):
+<augment_code_snippet path="libs/common/agents/editor_agent/editor_tools.py" mode="EXCERPT">
+````python
+config = ConfigService()
+forbidden = TopicMemoryService(config).get_forbidden_topics_as_text(days_back=30)
+base = "Focus on current, newsworthy topics with broad appeal"
+guidelines = f"{base}\n\n{forbidden}\n\nIMPORTANT: Avoid duplicates."
+
+task = ReporterTask(
+    name=TaskType.FIND_TOPICS,
+    field=request.field,
+    sub_section=request.sub_section,
+    description=f"Find {params.topics_per_field} trending topics in {request.field.value}{sub_section_desc}",
+    guidelines=guidelines,
+)
+````
+</augment_code_snippet>
+
+This integrates topic memory into reporter task guidelines without changing the editor or tool interfaces.
+
+memory = TopicMemoryService(config)
+forbidden = memory.get_forbidden_topics_as_text(days_back=30)
+
+task = ReporterTask(
+    name=TaskType.FIND_TOPICS,
+    field=ReporterField.TECHNOLOGY,
+    description="Find 3 trending topics in technology",
+    sub_section=None,
+    guidelines=f"{forbidden}\n\nEnsure your topics are unique.",
+    min_sources=1,
+    target_word_count=0,
+    require_images=False,
+)
+```
+
+
 ### 3.2 Update Editor Agent System Prompt
 
 Update the editor agent's system prompt to include topic memory responsibilities:
@@ -393,13 +457,12 @@ Always prioritize content uniqueness and editorial quality.
 
 ## 🧪 Step 4: Test Topic Memory System
 
-### 4.1 Create Topic Memory Test Script
+### 4.1 Quick Check: Print Forbidden Topics (inline)
 
-Create a test script to verify the topic memory system works:
+Paste the following into a Python shell (e.g., uv run python) to quickly verify the topic memory service:
 
 ```python
-# Create file: tests/test_topic_memory.py
-"""Test script for topic memory system."""
+"""Quick check for topic memory system (run inline)."""
 
 import asyncio
 from datetime import datetime
@@ -487,27 +550,24 @@ async def test_topic_memory():
     print("\n🎉 Topic memory test completed!")
 
 
-if __name__ == "__main__":
-    asyncio.run(test_topic_memory())
+# In a Python shell call:
+# import asyncio; asyncio.run(test_topic_memory())
 ```
 
-### 4.2 Run the Test
+### 4.2 Run the Quick Check
 
-```bash
-# In DevContainer terminal
-cd /workspaces/bobtimes
-python tests/test_topic_memory.py
-```
+- Open a Python shell: uv run python
+- Paste the snippet from 4.1
+- Then run: import asyncio; asyncio.run(test_topic_memory())
 
 ## 🔗 Step 5: Create Complete Integration Example
 
-### 5.1 Create Editor Workflow Integration Example
+### 5.1 Editor Workflow Integration Example (inline)
 
-Create a complete example showing how the editor integrates with topic memory:
+A complete example showing how the editor integrates with topic memory:
 
 ```python
-# Create file: tests/test_editor_integration.py
-"""Test editor integration with topic memory."""
+"""Editor integration with topic memory (inline example)."""
 
 import asyncio
 from datetime import datetime
@@ -641,64 +701,41 @@ async def test_editor_integration():
     print("\n🎉 Editor integration test completed!")
 
 
-if __name__ == "__main__":
-    asyncio.run(test_editor_integration())
+# In a Python shell call:
+# import asyncio; asyncio.run(test_editor_integration())
 ```
 
-### 5.2 Update Task Models
+### 5.2 Use Existing Task Models (no changes required)
 
-Update the task models to focus on essential functionality:
+You do not need to modify the task models. The current ReporterTask already has the fields you need, including guidelines for injecting forbidden topics.
 
+Example (excerpt from agents/models/task_models.py):
 ```python
-# In libs/common/agents/models/task_models.py
-
-# Updated ReporterTask - streamlined fields
 class ReporterTask(BaseModel):
-    """Task assignment for a reporter agent."""
-    name: TaskType  # Type of task (find_topics, write_story)
-    field: ReporterField  # Reporter's field of expertise
-    description: str  # Detailed task description
-    guidelines: str | None = None  # Enhanced guidelines with forbidden topics
-    editor_remarks: str | None = None  # Feedback from editor if revision needed
-    # Optional fields for specific task types
-    topic: str | None = None  # For write_story tasks
-    target_word_count: int = 500  # For write_story tasks
-    require_images: bool = False  # For write_story tasks
-    # Revision tracking
-    is_revision: bool = False  # True if this is a revision based on editor feedback
-    original_story_id: str | None = None  # ID of original story being revised
-    assigned_at: datetime = Field(default_factory=datetime.now)
-
-# Updated EditorTask - streamlined structure
-class EditorTask(BaseModel):
-    """Task assignment for an editor agent."""
-    task_id: str | None = None
-    submissions: list[StorySubmission]
-    max_stories_to_publish: int = 5
-    assigned_at: datetime = Field(default_factory=datetime.now)
+    name: TaskType
+    field: ReporterField
+    sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None
+    description: str
+    guidelines: str | None = None
+    min_sources: int = 1
+    target_word_count: int = 500
+    require_images: bool = False
 ```
+
+Tip: Use the guidelines field to pass the FORBIDDEN TOPICS block into reporter tasks without changing any model definitions.
 
 ## 🧪 Step 6: Complete Testing Suite
 
-### 6.1 Run All Tests
+### 6.1 Quick Checks (no test files required)
 
-Execute the test scripts to verify everything works:
+Use the inline quick checks from Step 4 and Step 5 inside a Python shell to validate behavior. There are no test files in this repository.
 
-```bash
-# Test 1: Basic topic memory functionality
-cd /workspaces/bobtimes
-python tests/test_topic_memory.py
+### 6.2 What To Look For
 
-# Test 2: Editor integration
-python tests/test_editor_integration.py
-```
-
-### 6.2 Expected Test Results
-
-**Test 1 - Topic Memory System:**
-```
-🧠 Topic Memory System Test
-========================================
+- Added sample topics are persisted (you see them listed)
+- Forbidden topics text shows a bullet list with titles and descriptions
+- Similarity check flags clearly related topics
+- Memory statistics report totals and recent counts
 
 1️⃣ Adding sample topics...
    ✅ Added: OpenAI GPT-5 Release
@@ -766,12 +803,12 @@ python tests/test_editor_integration.py
 
 ## 🔧 Step 7: Create Topic Memory Management Utilities
 
-### 7.1 Create Topic Memory Manager Script
+### 7.1 Create Topic Memory Manager Script (optional)
 
 Create a utility script for managing the topic memory:
 
 ```python
-# Create file: utils/manage_topic_memory.py
+# Create file: libs/common/utils/manage_topic_memory.py
 """Utility script for managing topic memory."""
 
 import asyncio
@@ -928,44 +965,30 @@ if __name__ == "__main__":
 
 ## 🧪 Step 8: Final Integration and Summary
 
-### 8.1 Run All Tests
+### 8.1 Quick Checks Recap
 
-Execute the test scripts to verify everything works:
+- Run the inline quick checks from Step 4 and Step 5 inside a Python shell
+- Optional: run the interactive manager if you created it
 
 ```bash
-# Test 1: Basic topic memory functionality
-cd /workspaces/bobtimes
-python tests/test_topic_memory.py
-
-# Test 2: Editor integration
-python tests/test_editor_integration.py
-
-# Test 3: Interactive memory management
-python utils/manage_topic_memory.py
+python libs/common/utils/manage_topic_memory.py
 ```
 
-### 8.2 Key Simplifications Made
+### 8.2 Design Focus
 
-This simplified approach focuses on the essential functionality:
+This approach focuses on the essential functionality:
 
-1. **Simplified Data Structure**:
-   - Only 3 fields per topic: `title`, `description`, `date_added`
-   - Removed complex categorization (field, sub_section, keywords, status)
-   - Removed story_id tracking
+1. Data structure focused on essentials:
+   - Fields: `title`, `description`, `date_added`
 
-2. **Prompt Injection Instead of Tools**:
-   - No complex forbidden topics tool
-   - Editor directly injects forbidden topics into reporter prompts
-   - Simpler workflow with fewer moving parts
+2. Prompt injection (no extra tools):
+   - Editor injects forbidden topics directly into `ReporterTask.guidelines`
 
-3. **Unified Topic Memory**:
-   - All topics treated equally regardless of field
-   - Simple date-based filtering for recent topics
-   - Basic word-overlap similarity detection
+3. Unified topic memory:
+   - Single memory for all fields with date-based filtering and simple word-overlap similarity
 
-4. **Streamlined Workflow**:
-   - Editor loads forbidden topics → injects into prompts → publishes stories → adds to memory
-   - No complex tool orchestration or field-specific filtering
+4. Streamlined workflow:
+   - Load forbidden topics → inject into guidelines → publish → add to memory
 
 ### 8.3 Verify File Structure
 
@@ -1080,13 +1103,9 @@ Congratulations! You've successfully implemented a topic memory system that:
 
 ```
 libs/common/utils/
-├── topic_memory_models.py      # Simplified data models
+├── topic_memory_models.py      # Data models
 ├── topic_memory_service.py     # Memory management service
-└── manage_topic_memory.py      # Management utility
-
-tests/
-├── test_topic_memory.py        # Basic functionality tests
-└── test_editor_integration.py  # Integration tests
+└── manage_topic_memory.py      # Management utility (optional)
 
 data/topics/
 └── covered_topics.json         # Persistent topic storage
@@ -1107,37 +1126,17 @@ After completing this lab, you can:
 Run these commands to verify everything works:
 
 ```bash
-# Test basic functionality
-python tests/test_topic_memory.py
-
-# Test editor integration
-python tests/test_editor_integration.py
-
-# Interactive management
-python utils/manage_topic_memory.py
+# Interactive management (optional, if you created it)
+python libs/common/utils/manage_topic_memory.py
 ```
 
-### 10.6 Key Design Decisions
+### 10.6 Design Principles
 
-This approach focuses on the essential functionality:
+1. Streamlined data structure (title, description, date_added)
+2. Prompt injection approach via `ReporterTask.guidelines`
+3. Unified topic memory with simple date filtering and similarity
+4. Clean workflow: load → inject → publish → persist
 
-1. **Streamlined Data Structure**:
-   - Only 3 fields per topic: `title`, `description`, `date_added`
-   - Removed complex categorization (field, sub_section, keywords, status)
-   - Removed story_id tracking
-
-2. **Prompt Injection Approach**:
-   - Direct injection of forbidden topics into reporter prompts
-   - Clean workflow with fewer moving parts
-   - No complex tool orchestration needed
-
-3. **Unified Topic Memory**:
-   - All topics treated equally regardless of field
-   - Simple date-based filtering for recent topics
-   - Basic word-overlap similarity detection
-
-4. **Clean Workflow**:
-   - Editor loads forbidden topics → injects into prompts → publishes stories → adds to memory
-   - Straightforward process that's easy to understand and maintain
+These choices keep the lab focused, easy to implement, and easy to extend later.
 
 🎯 **Lab 3 Complete!** You now have a working topic deduplication system that will prevent your AI newspaper from repeating content across news cycles while maintaining clean, maintainable code.

@@ -378,12 +378,22 @@ Returns: CollectTopicsResult with topics organized by field
                     f"📰 Requesting topics from {request.field.value}{sub_section_desc} reporter...")
 
                 # Create task for finding topics
+                base_guidelines = "Focus on current, newsworthy topics with broad appeal"
+                try:
+                    config_service = ConfigService()
+                    forbidden_text = TopicMemoryService(config_service).get_forbidden_topics_as_text(days_back=30)
+                except Exception as e:
+                    logger.exception("Failed to retrieve forbidden topics for guidelines")
+                    forbidden_text = "No recent topics to avoid."
+
+                combined_guidelines = f"{base_guidelines}\n\n{forbidden_text}\n\nIMPORTANT: Avoid duplicates."
+
                 task = ReporterTask(
                     name=TaskType.FIND_TOPICS,
                     field=request.field,
                     sub_section=request.sub_section,
                     description=f"Find {params.topics_per_field} trending topics in {request.field.value}{sub_section_desc}",
-                    guidelines="Focus on current, newsworthy topics with broad appeal"
+                    guidelines=combined_guidelines
                 )
 
                 # Execute task via task service (which spawns reporter)
