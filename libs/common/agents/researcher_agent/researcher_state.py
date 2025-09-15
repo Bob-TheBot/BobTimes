@@ -1,4 +1,4 @@
-"""Reporter state management models and functionality."""
+"""Researcher state management models and functionality."""
 
 from enum import StrEnum
 from typing import Any
@@ -14,14 +14,14 @@ logger = get_logger(__name__)
 
 
 class TaskPhase(StrEnum):
-    """Phase of task execution for reporter agents."""
+    """Phase of task execution for researcher agents."""
     RESEARCH = "research"
     WRITING = "writing"
     COMPLETED = "completed"
 
 
-class ReporterToolResult(BaseModel):
-    """Result from tool execution for reporter agents."""
+class ResearcherToolResult(BaseModel):
+    """Result from tool execution for researcher agents."""
     tool_name: str
     success: bool
     result: str
@@ -45,12 +45,12 @@ def _default_tool_calls() -> list[ToolCall]:
     return []
 
 
-def _default_tool_results() -> list[ReporterToolResult]:
+def _default_tool_results() -> list[ResearcherToolResult]:
     return []
 
 
-class ReporterState(BaseModel):
-    """Current state of a reporter agent's task execution."""
+class ResearcherState(BaseModel):
+    """Current state of a researcher agent's task execution."""
 
     # Task information
     current_task: JournalistTask
@@ -73,7 +73,7 @@ class ReporterState(BaseModel):
 
     # Tool execution history
     tool_calls: list[ToolCall] = Field(default_factory=_default_tool_calls)
-    tool_results: list[ReporterToolResult] = Field(default_factory=_default_tool_results)
+    tool_results: list[ResearcherToolResult] = Field(default_factory=_default_tool_results)
 
     # Error tracking
     errors: list[str] = Field(default_factory=list)
@@ -83,11 +83,11 @@ class ReporterState(BaseModel):
     command_history: list[str] = Field(default_factory=list)
 
 
-class ReporterStateManager:
-    """Helper class for managing reporter state operations."""
+class ResearcherStateManager:
+    """Helper class for managing researcher state operations."""
 
     @staticmethod
-    def reset_for_new_task(state: ReporterState, task: JournalistTask) -> None:
+    def reset_for_new_task(state: ResearcherState, task: JournalistTask) -> None:
         """Reset state for a new task execution."""
         state.current_task = task
         state.task_phase = TaskPhase.RESEARCH
@@ -105,43 +105,43 @@ class ReporterStateManager:
         state.command_history.clear()
 
     @staticmethod
-    def advance_iteration(state: ReporterState) -> None:
+    def advance_iteration(state: ResearcherState) -> None:
         """Advance to next iteration."""
         state.iteration += 1
 
     @staticmethod
-    def advance_research_iteration(state: ReporterState) -> None:
+    def advance_research_iteration(state: ResearcherState) -> None:
         """Advance research iteration counter."""
         state.research_iteration_count += 1
 
     @staticmethod
-    def transition_to_writing_phase(state: ReporterState) -> None:
+    def transition_to_writing_phase(state: ResearcherState) -> None:
         """Transition from research to writing phase."""
         state.task_phase = TaskPhase.WRITING
 
     @staticmethod
-    def mark_completed(state: ReporterState) -> None:
+    def mark_completed(state: ResearcherState) -> None:
         """Mark task as completed."""
         state.task_phase = TaskPhase.COMPLETED
 
     @staticmethod
-    def add_tool_call(state: ReporterState, tool_call: ToolCall) -> None:
+    def add_tool_call(state: ResearcherState, tool_call: ToolCall) -> None:
         """Add a tool call to the history."""
         state.tool_calls.append(tool_call)
 
     @staticmethod
-    def add_tool_result(state: ReporterState, tool_result: ReporterToolResult) -> None:
+    def add_tool_result(state: ResearcherState, tool_result: ResearcherToolResult) -> None:
         """Add a tool result to the history."""
         tool_result.iteration = state.iteration
         state.tool_results.append(tool_result)
 
     @staticmethod
-    def add_search_result(state: ReporterState, search_summary: SearchResultSummary) -> None:
+    def add_search_result(state: ResearcherState, search_summary: SearchResultSummary) -> None:
         """Add search results to state."""
         state.search_results.append(search_summary)
 
     @staticmethod
-    def set_current_research(state: ReporterState, research: ResearchResult) -> None:
+    def set_current_research(state: ResearcherState, research: ResearchResult) -> None:
         """Set the current research result."""
         # Set as current research
         state.current_research = research
@@ -160,7 +160,7 @@ class ReporterStateManager:
                 existing_urls.add(source.url)
 
     @staticmethod
-    def add_error(state: ReporterState, error_message: str) -> None:
+    def add_error(state: ResearcherState, error_message: str) -> None:
         """Add an error to the state."""
         error_entry = f"Iteration {state.iteration}: {error_message}"
         state.errors.append(error_entry)
@@ -171,7 +171,7 @@ class ReporterStateManager:
             state.errors = state.errors[-5:]
 
     @staticmethod
-    def add_command(state: ReporterState, command: str) -> None:
+    def add_command(state: ResearcherState, command: str) -> None:
         """Add a command to the history."""
         command_entry = f"Iteration {state.iteration}: {command}"
         state.command_history.append(command_entry)
@@ -181,23 +181,23 @@ class ReporterStateManager:
             state.command_history = state.command_history[-10:]
 
     @staticmethod
-    def has_sufficient_research(state: ReporterState, min_sources: int) -> bool:
+    def has_sufficient_research(state: ResearcherState, min_sources: int) -> bool:
         """Check if we have sufficient research for the task."""
         return len(state.sources) >= min_sources and len(state.accumulated_facts) > 0
 
     @staticmethod
-    def should_continue_research(state: ReporterState, max_research_iterations: int = 4) -> bool:
+    def should_continue_research(state: ResearcherState, max_research_iterations: int = 4) -> bool:
         """Check if we should continue research phase."""
         return (state.task_phase == TaskPhase.RESEARCH and
                 state.research_iteration_count < max_research_iterations)
 
     @staticmethod
-    def get_latest_research(state: ReporterState) -> ResearchResult | None:
+    def get_latest_research(state: ResearcherState) -> ResearchResult | None:
         """Get the most recent research result."""
         return state.research_results[-1] if state.research_results else None
 
     @staticmethod
-    def collect_all_sources_from_searches(state: ReporterState) -> list[StorySource]:
+    def collect_all_sources_from_searches(state: ResearcherState) -> list[StorySource]:
         """Collect all sources from search results."""
         from datetime import datetime
 
@@ -221,7 +221,7 @@ class ReporterStateManager:
         return all_sources
 
     @staticmethod
-    def get_progress_summary(state: ReporterState) -> dict[str, int | str]:
+    def get_progress_summary(state: ResearcherState) -> dict[str, int | str]:
         """Get a summary of current progress."""
         return {
             "phase": state.task_phase.value,
@@ -236,14 +236,14 @@ class ReporterStateManager:
 
     @staticmethod
     def save_sources_with_topics(
-        state: ReporterState,
+        state: ResearcherState,
         sources: list[StorySource],
         topic_source_mapping: dict[str, Any] | None = None
     ) -> None:
         """Save sources to SharedMemoryStore and current state.
 
         Args:
-            state: Reporter state
+            state: Researcher state
             sources: List of sources to save
             topic_source_mapping: Optional mapping of topics to their source data
         """
@@ -278,7 +278,7 @@ class ReporterStateManager:
     def get_sources_for_topic(topic_name: str) -> list[StorySource]:
         """Retrieve all sources for a specific topic from shared memory.
 
-        This is the key method that reporters will use to get sources for story writing.
+        This is the key method that researchers will use to get sources for story writing.
 
         Args:
             topic_name: The topic to get sources for

@@ -11,7 +11,7 @@ from ..types import (
     EditorialDecisionType,
     NewspaperSection,
     OverallQuality,
-    ReporterField,
+    JournalistField,
     StoryPriority,
     StoryStatus,
 )
@@ -47,7 +47,7 @@ class StorySubmission(BaseModel):
     submission_id: str | None = None
     draft: StoryDraft
     reporter_id: str
-    reporter_field: ReporterField
+    reporter_field: JournalistField
     submission_time: datetime = Field(default_factory=datetime.now)
     status: StoryStatus = StoryStatus.SUBMITTED
     urgency: StoryPriority = StoryPriority.MEDIUM
@@ -62,7 +62,7 @@ class PublishedStory(BaseModel):
     summary: str
     author: str
     reporter_id: str  # Add reporter_id field for compatibility
-    field: ReporterField
+    field: JournalistField
     section: NewspaperSection
     priority: StoryPriority
     sources: list[StorySource]

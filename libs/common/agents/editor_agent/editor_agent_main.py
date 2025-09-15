@@ -12,9 +12,9 @@ from agents.editor_agent.editor_models import EditorDecision, EditorInfoResponse
 from agents.editor_agent.editor_state import EditorState, EditorStateManager
 from agents.editor_agent.editor_tools import AssignTopicsTool, CollectStoryTool, CollectTopicsTool, PublishStoryTool, ReviewStoryTool
 from agents.models.submission_models import PublishedStory
-from agents.models.task_models import ReporterTask
+from agents.models.task_models import JournalistTask
 from agents.task_execution_service import TaskExecutionService
-from agents.types import EditorGoal, FieldTopicRequest, NewspaperSection, ReporterField, StoryPriority, TaskType
+from agents.types import AgentType, EditorGoal, FieldTopicRequest, NewspaperSection, JournalistField, StoryPriority, TaskType
 from core.config_service import ConfigService
 from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
@@ -82,14 +82,14 @@ class EditorAgent(BaseAgent):
             temperature=str(config.temperature)
         )
 
-    def create_reporter_task_with_forbidden_topics(
+    def create_researcher_task_with_forbidden_topics(
         self,
         task_type: TaskType,
-        field: ReporterField,
+        field: JournalistField,
         description: str,
         topic: str | None = None,
         days_back: int = 30
-    ) -> ReporterTask:
+    ) -> JournalistTask:
         """Create a reporter task with forbidden topics injected into guidelines.
 
         Args:
@@ -119,7 +119,8 @@ IMPORTANT: Ensure your proposed topics are unique and not similar to the forbidd
 Focus on fresh angles and new developments that haven't been covered recently.
 """
 
-        return ReporterTask(
+        return JournalistTask(
+            agent_type=AgentType.RESEARCHER,
             name=task_type,
             field=field,
             description=description,

@@ -26,7 +26,7 @@ if str(BACKEND_PATH) not in sys.path:
 
 # Now safe to import shared agents/types and backend services
 from agents.types import (
-    ReporterField, 
+    JournalistField, 
     TechnologySubSection, 
     EconomicsSubSection,
     ScienceSubSection,
@@ -49,14 +49,14 @@ async def generate_all_issues() -> int:
     """
     # Define all field-subsection combinations
     field_subsection_map = {
-        ReporterField.TECHNOLOGY: [
+        JournalistField.TECHNOLOGY: [
             TechnologySubSection.AI_TOOLS,
             TechnologySubSection.TECH_TRENDS,
             TechnologySubSection.QUANTUM_COMPUTING,
             TechnologySubSection.GENERAL_TECH,
             TechnologySubSection.MAJOR_DEALS
         ],
-        ReporterField.ECONOMICS: [
+        JournalistField.ECONOMICS: [
             EconomicsSubSection.CRYPTO,
             EconomicsSubSection.US_STOCK_MARKET,
             EconomicsSubSection.GENERAL_NEWS,
@@ -65,7 +65,7 @@ async def generate_all_issues() -> int:
             EconomicsSubSection.UPCOMING_IPOS,
             EconomicsSubSection.MAJOR_TRANSACTIONS
         ],
-        ReporterField.SCIENCE: [
+        JournalistField.SCIENCE: [
             ScienceSubSection.NEW_RESEARCH,
             ScienceSubSection.BIOLOGY,
             ScienceSubSection.CHEMISTRY,
@@ -75,7 +75,7 @@ async def generate_all_issues() -> int:
     }
 
     field_subsection_map = {
-        ReporterField.TECHNOLOGY: [
+        JournalistField.TECHNOLOGY: [
             TechnologySubSection.AI_TOOLS
         ]
     }
@@ -111,7 +111,7 @@ async def generate_all_issues() -> int:
     return 0 if total_success == total_attempted else 1
 
 
-async def generate_single_issue(field: ReporterField, sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None) -> int:
+async def generate_single_issue(field: JournalistField, sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None) -> int:
     """Generate one newspaper issue for a single topic with one reporter and one editor.
     
     Args:

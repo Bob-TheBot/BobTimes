@@ -1,12 +1,8 @@
-"""Reporter-specific tools for news research and content creation."""
-
-from datetime import datetime
-from enum import StrEnum
+"""Reporter-specific tools for memory retrieval and drafting (no web research)."""
 from typing import Any
+from difflib import SequenceMatcher
 
-from agents.models.search_models import CleanedSearchResult
-from agents.models.story_models import StorySource
-from agents.tools.base_tool import BaseTool, UnifiedToolResult
+from agents.tools.base_tool import BaseTool
 from core.config_service import ConfigService
 from core.llm_service import ModelSpeed
 from core.logging_service import get_logger
@@ -14,20 +10,17 @@ from pydantic import BaseModel, Field
 
 logger = get_logger(__name__)
 
-
-def _normalize_topic_name(topic: str) -> str:
-    """Normalize topic name for consistent storage and retrieval."""
-    return topic.strip().title()
-
-
 # ============================================================================
-# MEMORY FETCH TOOL
+# MEMORY FETCH TOOL (with intelligent matching)
 # ============================================================================
 
 class FetchFromMemoryParams(BaseModel):
-    """Parameters for fetching content from SharedMemoryStore."""
-    topic_key: str = Field(description="Exact topic key from memory to fetch content for")
+    """Parameters for fetching content from SharedMemoryStore.
+    Provide either an exact topic_key OR a topic_query for intelligent matching.
+    """
     field: str = Field(description="Field to search within (technology/economics/science)")
+    topic_key: str | None = Field(default=None, description="Exact topic key from memory (if known)")
+    topic_query: str | None = Field(default=None, description="Free-text topic query to match against stored topics")
 
 
 class FetchFromMemoryResult(BaseModel):
@@ -48,67 +41,96 @@ class FetchFromMemoryTool(BaseTool):
 
     name: str = "fetch_from_memory"
     description: str = """
-Fetch content from SharedMemoryStore using an exact topic key.
-Use this when you have a topic assignment and need to retrieve the research content.
-
-Available memory topics for your field will be shown in your context.
-Pick the topic key that best matches your assignment and use it to fetch content.
+Fetch content from SharedMemoryStore by exact topic key or via intelligent matching.
+Use this when you have a topic assignment and need to retrieve the research content stored by the researcher.
 
 Parameters:
-- topic_key: Exact topic key from memory (must match exactly)
 - field: Field to search within (technology/economics/science)
+- topic_key (optional): Exact topic key from memory (use when you know the exact key)
+- topic_query (optional): Free-text query (use when you don't know the exact key)
 
-Usage: <tool>fetch_from_memory</tool><args>{"topic_key": "Best Ai Tools To Create Viral Content", "field": "technology"}</args>
+Behavior:
+- If topic_key is provided and exists in the given field → fetch that memory
+- Else, the tool will similarity-match topic_query against stored topic keys in the field and select the best match
 
-Returns: Sources and content for the specified topic key
+Examples:
+<tool>fetch_from_memory</tool><args>{"field": "technology", "topic_key": "Best AI Tools To Create Viral Content"}</args>
+<tool>fetch_from_memory</tool><args>{"field": "technology", "topic_query": "viral AI content creation tools"}</args>
+
+Returns: A summary of sources and the resolved topic_key
 """
     params_model: type[BaseModel] | None = FetchFromMemoryParams
 
     async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> FetchFromMemoryResult:
-        """Fetch content from SharedMemoryStore."""
+        """Fetch content from SharedMemoryStore with intelligent topic matching."""
         if not isinstance(params, FetchFromMemoryParams):
-            return FetchFromMemoryResult(
-                success=False,
-                topic_key="",
-                error="Invalid parameters provided"
-            )
+            return FetchFromMemoryResult(success=False, topic_key="", error="Invalid parameters provided")
 
         try:
             from agents.shared_memory_store import get_shared_memory_store
             memory_store = get_shared_memory_store()
 
-            # Get the specific memory entry
-            memory_entry = memory_store.get_memory(params.topic_key)
+            selected_key: str | None = None
+            memory_entry = None
+
+            # Try exact key if provided
+            if params.topic_key:
+                entry = memory_store.get_memory(params.topic_key)
+                if entry and entry.field == params.field:
+                    selected_key = params.topic_key
+                    memory_entry = entry
+
+            # Decide on query for matching if exact wasn't resolved
+            query = params.topic_query or params.topic_key
+
+            if selected_key is None:
+                candidates = memory_store.list_topics(field=params.field)
+                if not candidates:
+                    return FetchFromMemoryResult(success=False, topic_key="", error=f"No topics found for field '{params.field}'")
+
+                if not query:
+                    return FetchFromMemoryResult(success=False, topic_key="", error=f"Provide 'topic_key' or 'topic_query'. Available topics: {candidates}")
+
+                def norm(s: str) -> str:
+                    return " ".join(s.lower().strip().split())
+
+                nq = norm(query)
+                best_key = None
+                best_score = 0.0
+                for cand in candidates:
+                    nc = norm(cand)
+                    ratio = SequenceMatcher(a=nq, b=nc).ratio()
+                    contains = 1.0 if (nq in nc or nc in nq) else 0.0
+                    qs = set(nq.split())
+                    cs = set(nc.split())
+                    jacc = (len(qs & cs) / len(qs | cs)) if (qs or cs) else 0.0
+                    score = 0.5 * ratio + 0.4 * jacc + 0.1 * contains
+                    if score > best_score:
+                        best_score = score
+                        best_key = cand
+
+                if best_key is None or best_score < 0.5:
+                    suggestions = candidates[:5]
+                    return FetchFromMemoryResult(success=False, topic_key="", error=f"No good match for '{query}'. Top suggestions: {suggestions}")
+
+                selected_key = best_key
+                memory_entry = memory_store.get_memory(selected_key)
 
             if not memory_entry:
-                # List available topics for debugging
-                available_topics = memory_store.list_topics(field=params.field)
-                return FetchFromMemoryResult(
-                    success=False,
-                    topic_key=params.topic_key,
-                    error=f"Topic key '{params.topic_key}' not found in memory. Available topics: {available_topics}"
-                )
-
-            # Verify field matches
-            if memory_entry.field != params.field:
-                return FetchFromMemoryResult(
-                    success=False,
-                    topic_key=params.topic_key,
-                    error=f"Topic key '{params.topic_key}' belongs to field '{memory_entry.field}', not '{params.field}'"
-                )
+                return FetchFromMemoryResult(success=False, topic_key="", error="Matched topic could not be loaded from memory")
 
             # Create content summary
-            content_parts = []
+            content_parts: list[str] = []
             for source in memory_entry.sources:
-                if source.content:
+                if getattr(source, "content", None):
                     content_parts.append(f"Source: {source.title}\nContent: {source.content[:200]}...")
-                elif source.summary:
+                elif getattr(source, "summary", None):
                     content_parts.append(f"Source: {source.title}\nSummary: {source.summary}")
 
             content_summary = "\n\n".join(content_parts)
 
             logger.info(
-                f"📚 [FETCH-MEMORY] Retrieved content for topic: {params.topic_key}",
+                f"📚 [FETCH-MEMORY] Retrieved content for topic: {selected_key}",
                 sources_count=len(memory_entry.sources),
                 field=params.field,
                 content_length=len(content_summary)
@@ -116,380 +138,72 @@ Returns: Sources and content for the specified topic key
 
             return FetchFromMemoryResult(
                 success=True,
-                topic_key=params.topic_key,
+                topic_key=selected_key,
                 sources_count=len(memory_entry.sources),
                 content_summary=content_summary,
-                error=None
+                error=None,
             )
 
         except Exception as e:
-            logger.error(f"Failed to fetch from memory: {e}")
-            return FetchFromMemoryResult(
-                success=False,
-                topic_key=params.topic_key,
-                error=f"Error fetching from memory: {str(e)}"
-            )
+            logger.exception("Failed to fetch from memory")
+            return FetchFromMemoryResult(success=False, topic_key="", error=str(e))
 
 
-def _extract_topics_from_search_results(results: list[CleanedSearchResult], query: str) -> tuple[list[str], dict[str, Any]]:
-    """Extract topics from search results and create topic-source mapping.
 
-    Args:
-        results: List of search results
-        query: Original search query
-
-    Returns:
-        Tuple of (topics_list, topic_source_mapping)
-    """
-    topics: list[str] = []
-    topic_source_mapping: dict[str, Any] = {}
-
-    for result in results:
-        if hasattr(result, 'title') and result.title:
-            # Use the result title as the topic, normalized
-            topic_name = _normalize_topic_name(result.title)
-
-            # Get available content - search results usually only have snippets
-            snippet = getattr(result, 'snippet', getattr(result, 'body', ''))
-            full_content = getattr(result, 'content', None)
-            url = getattr(result, 'url', getattr(result, 'href', ''))
-
-            # Validate content quality - we need substantial content for topics
-            content_length = len(full_content) if full_content else len(snippet)
-            has_substantial_content = content_length > 100  # Minimum content threshold
-
-            # Create source for this topic
-            source = StorySource(
-                url=url,
-                title=result.title,
-                summary=snippet,
-                content=full_content,
-                source_type='search',
-                accessed_at=datetime.now()
-            )
-
-            # Map topic to source with content validation info
-            topic_source_mapping[topic_name] = {
-                'source': source,
-                'query': query,
-                'needs_content_fetch': not has_substantial_content,  # Flag for fallback
-                'content_length': content_length
-            }
-
-            topics.append(topic_name)
-
-    return topics, topic_source_mapping
+# ============================================================================
+# USE LLM (generic completion for drafting text with memory context)
+# ============================================================================
+class UseLLMParams(BaseModel):
+    prompt: str = Field(description="Prompt to send to the LLM")
+    temperature: float | None = Field(default=None, description="Optional temperature override")
 
 
-# Search Tool Models
-class SearchType(StrEnum):
-    """Types of search operations."""
-    TEXT = "text"
-    NEWS = "news"
-    IMAGES = "images"
-
-
-class SearchParams(BaseModel):
-    """Parameters for search operations."""
-    query: str = Field(description="Search query string")
-    search_type: SearchType = Field(default=SearchType.NEWS, description="Type of search to perform")
-    max_results: int = Field(default=4, description="Maximum number of results to return")
-    time_limit: str | None = Field(default=None, description="Time limit for search (d, w, m, y)")
-
-
-class SearchToolResult(BaseModel):
-    """Result from search tool execution."""
-    search_type: str
-    query: str
+class UseLLMResult(BaseModel):
     success: bool
-    cleaned_results: list[CleanedSearchResult] = Field(default_factory=lambda: [])
-    topics_extracted: list[str] = Field(default_factory=list, description="Topics extracted from search results")
-    topic_source_mapping: dict[str, Any] = Field(default_factory=dict, description="Mapping of topics to their sources")
-    error: str | None = None
-
-
-# Scraper Tool Models
-class ScrapeParams(BaseModel):
-    """Parameters for scraping operations."""
-    url: str = Field(description="URL to scrape")
-
-
-class ScraperToolResult(BaseModel):
-    """Result from scraper tool execution."""
-    success: bool
-    url: str
-    title: str | None = None
     content: str | None = None
-    word_count: int = 0
     error: str | None = None
 
 
-# Tool Implementations
-class ReporterSearchTool(BaseTool):
-    """Enhanced search tool for reporter agents with detailed output format."""
+class UseLLMTool(BaseTool):
+    """Call the configured LLM for free-form text generation.
 
-    def __init__(self) -> None:
-        name = "search"
-        description = f"""
-Search for current information and news using DuckDuckGo.
+    Reporters can use this after retrieving memory to compose drafts or outlines.
+    """
 
-PARAMETER SCHEMA:
-{SearchParams.model_json_schema()}
+    name: str = "use_llm"
+    description: str = """
+Generate text using the configured LLM service.
 
-CORRECT USAGE EXAMPLES:
-{{"query": "AI tools technology trends", "search_type": "news", "time_limit": "w", "max_results": 5}}
-{{"query": "OpenAI GPT-4 release", "search_type": "news", "time_limit": "d"}}
-{{"query": "machine learning background", "search_type": "text", "max_results": 3}}
+Parameters:
+- prompt: string prompt to send
+- temperature: optional float to control creativity
 
-USAGE GUIDELINES:
-- ALWAYS use "news" search_type for breaking news and current events
-- Use "text" search_type only for background information or historical context
-- Include time_limit parameter: "d" (day), "w" (week), "m" (month), "y" (year)
-- Optimize queries with specific terms for better results
-- Use max_results to control the number of results (default: 4)
-
-RETURNS:
-- search_type: Type of search performed
-- query: The search query used
-- success: Whether the search was successful
-- cleaned_results: List of cleaned search results with url, title, snippet
-- error: Error message if search failed
-
-The tool automatically extracts and cleans search results for easy consumption.
-When searching for news, always include recent time filters for current events.
+Example:
+<tool>use_llm</tool><args>{"prompt": "Write a 200-word summary about ..."}</args>
 """
-        super().__init__(name=name, description=description)
-        self.params_model = SearchParams
+    params_model: type[BaseModel] | None = UseLLMParams
 
-    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> UnifiedToolResult:
-        """Execute search with DuckDuckGo API."""
-        if not isinstance(params, SearchParams):
-            raise ValueError(f"Expected SearchParams, got {type(params)}")
-
+    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.SLOW) -> UseLLMResult:
+        if not isinstance(params, UseLLMParams):
+            return UseLLMResult(success=False, error="Invalid parameters provided")
         try:
-            # Import here to avoid circular imports
-            from utils.duckduckgo_search_tool import DDGRegion, DDGSafeSearch, DDGTimeLimit, DuckDuckGoSearchTool, NewsSearchResult, TextSearchResult
+            llm = self.get_llm_service()
+            if llm is None:
+                return UseLLMResult(success=False, error="LLM service not available")
 
-            # Create the underlying search tool
-            search_tool = DuckDuckGoSearchTool()
+            class TextResponse(BaseModel):
+                content: str
 
-            # Convert time_limit string to DDGTimeLimit enum
-            time_limit_enum = None
-            if params.time_limit:
-                if params.time_limit == "d":
-                    time_limit_enum = DDGTimeLimit.day
-                elif params.time_limit == "w":
-                    time_limit_enum = DDGTimeLimit.week
-                elif params.time_limit == "m":
-                    time_limit_enum = DDGTimeLimit.month
-                elif params.time_limit == "y":
-                    time_limit_enum = DDGTimeLimit.year
-
-            # Execute the search based on search type - methods return lists, not result objects
-            if params.search_type == SearchType.NEWS:
-                results = search_tool.search_news(
-                    query=params.query,
-                    region=DDGRegion.united_states,
-                    safe_search=DDGSafeSearch.moderate,
-                    time_limit=time_limit_enum,
-                    max_results=params.max_results
-                )
-            else:
-                results = search_tool.search_text(
-                    query=params.query,
-                    region=DDGRegion.united_states,
-                    safe_search=DDGSafeSearch.moderate,
-                    time_limit=time_limit_enum,
-                    max_results=params.max_results
-                )
-
-            # Convert results to CleanedSearchResult format based on search type
-            from typing import cast
-            cleaned_results = []
-            for result in results:
-                if params.search_type == SearchType.NEWS:
-                    # News search returns NewsSearchResult with url, body, source, date, image
-                    news_result = cast("NewsSearchResult", result)
-                    cleaned_result = CleanedSearchResult(
-                        title=news_result.title,
-                        url=news_result.url,
-                        content=news_result.body,
-                        image_url=news_result.image,
-                        image_local_path=None,
-                        image_size_kb=None,
-                        source=news_result.source,
-                        date=news_result.date
-                    )
-                else:
-                    # Text search returns TextSearchResult with href, body (no source, date, image)
-                    text_result = cast("TextSearchResult", result)
-                    cleaned_result = CleanedSearchResult(
-                        title=text_result.title,
-                        url=text_result.href,
-                        content=text_result.body,
-                        image_url=None,
-                        image_local_path=None,
-                        image_size_kb=None,
-                        source=None,
-                        date=None
-                    )
-                cleaned_results.append(cleaned_result)
-
-            # Extract topics from results for SharedMemoryStore
-            topics_extracted, topic_source_mapping = _extract_topics_from_search_results(cleaned_results, params.query)
-
-            # Convert to story sources for unified interface
-            story_sources = ReporterToolRegistry.convert_search_results_to_sources(cleaned_results)
-
-            return UnifiedToolResult(
-                success=True,
-                operation="search",
-                query=params.query,
-                sources=story_sources,
-                topics_extracted=topics_extracted,
-                topic_source_mapping=topic_source_mapping,
-                metadata={
-                    "search_type": params.search_type.value,
-                    "results_count": len(cleaned_results),
-                    "time_limit": params.time_limit
-                },
-                summary=f"Found {len(cleaned_results)} search results for '{params.query}'",
-                error=None
+            resp = await llm.generate(
+                prompt=params.prompt,
+                response_type=TextResponse,
+                model_speed=model_speed,
+                temperature=params.temperature
             )
+            return UseLLMResult(success=True, content=resp.content)
         except Exception as e:
-            logger.error(f"Search tool execution failed: {e}")
-            return UnifiedToolResult(
-                success=False,
-                operation="search",
-                query=params.query,
-                sources=[],
-                topics_extracted=[],
-                topic_source_mapping={},
-                metadata={"search_type": params.search_type.value},
-                summary=None,
-                error=str(e)
-            )
-
-
-class ReporterScraperTool(BaseTool):
-    """Enhanced scraper tool for reporter agents with detailed output format."""
-
-    def __init__(self) -> None:
-        name = "scrape"
-        description = f"""
-Scrape detailed content from a specific web page URL with interactive content support.
-
-PARAMETER SCHEMA:
-{ScrapeParams.model_json_schema()}
-
-CORRECT USAGE EXAMPLES:
-{{"url": "https://example.com/article"}}
-
-INCORRECT USAGE (DO NOT USE):
-{{"urls": ["https://example.com"]}} ❌ Wrong parameter name - use 'url' not 'urls'
-{{"url": ["https://example.com"]}} ❌ Wrong type - use string not array
-
-USAGE GUIDELINES:
-- Parameter name must be 'url' (singular)
-- Value must be a single URL string (not a list)
-- Use for getting detailed information from credible sources found via search
-- The tool extracts readable text content, handling JavaScript-heavy sites
-- INTERACTIVE CONTENT SUPPORT: Automatically handles pages that require clicking buttons like:
-  * "Continue reading" / "Read more" buttons
-  * "Show more" / "Expand" buttons
-  * Cookie consent popups and overlays
-  * Content that loads dynamically after user interaction
-- Only scrape ONE URL at a time - call multiple times for multiple URLs
-
-RETURNS:
-- success: Whether scraping was successful
-- url: The URL that was scraped
-- title: Page title if available
-- content: Cleaned text content from the page
-- word_count: Number of words in the extracted content
-- error: Error message if scraping failed
-
-Use this tool to get detailed facts and quotes from sources discovered through search.
-Always verify the source credibility before using scraped content in stories.
-"""
-        super().__init__(name=name, description=description)
-        self.params_model = ScrapeParams
-
-    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> UnifiedToolResult:
-        """Execute scraping with web scraper."""
-        if not isinstance(params, ScrapeParams):
-            raise ValueError(f"Expected ScrapeParams, got {type(params)}")
-
-        try:
-            # Import here to avoid circular imports
-            from utils.playwright_scraper import AsyncPlaywrightScraper
-
-            # Create the underlying scraper tool with interactive content handling
-            scraper_tool = AsyncPlaywrightScraper(
-                timeout=60,
-                wait_time=3000,  # Wait longer for dynamic content
-                headless=True,
-                handle_interactive_content=True,  # Enable interactive content handling
-                max_content_buttons=3  # Limit button clicks for efficiency
-            )
-
-            # Execute the scraping
-            result = await scraper_tool.scrape_url(params.url)
-
-            # Create story source from scraped content
-            sources = []
-            if result.success and result.content:
-                source = StorySource(
-                    url=result.url,
-                    title=result.title or "Scraped Content",
-                    summary=result.content[:200] + "..." if len(result.content) > 200 else result.content,
-                    content=result.content,
-                    source_type="scrape",
-                    accessed_at=datetime.now()
-                )
-                sources.append(source)
-
-                # Extract topic from title or URL
-                topic_name = _normalize_topic_name(result.title or result.url.split('/')[-1])
-                topic_source_mapping = {
-                    topic_name: {
-                        'source': source,
-                        'url': result.url
-                    }
-                }
-                topics_extracted = [topic_name]
-            else:
-                topic_source_mapping = {}
-                topics_extracted = []
-
-            return UnifiedToolResult(
-                success=result.success,
-                operation="scrape",
-                query=result.url,
-                sources=sources,
-                topics_extracted=topics_extracted,
-                topic_source_mapping=topic_source_mapping,
-                metadata={
-                    "word_count": result.word_count,
-                    "title": result.title
-                },
-                summary=f"Scraped {result.word_count} words from {result.url}" if result.success else None,
-                error=result.error_message
-            )
-        except Exception as e:
-            logger.error(f"Scraper tool execution failed: {e}")
-            return UnifiedToolResult(
-                success=False,
-                operation="scrape",
-                query=params.url,
-                sources=[],
-                topics_extracted=[],
-                topic_source_mapping={},
-                metadata={},
-                summary=None,
-                error=str(e)
-            )
-
+            logger.exception("use_llm tool failed")
+            return UseLLMResult(success=False, error=str(e))
 
 class ReporterToolRegistry:
     """Registry for reporter tools with automatic schema generation."""
@@ -499,13 +213,10 @@ class ReporterToolRegistry:
         self.config_service = config_service or ConfigService()
 
         # Import YouTube tool here to avoid circular imports
-        from utils.youtube_tool import YouTubeReporterTool
 
         self.tools = {
-            "search": ReporterSearchTool(),
-            "scrape": ReporterScraperTool(),
-            "youtube_search": YouTubeReporterTool(self.config_service),  # Add YouTube tool
-            "fetch_from_memory": FetchFromMemoryTool()  # Add memory fetch tool
+            "fetch_from_memory": FetchFromMemoryTool(),
+            "use_llm": UseLLMTool(),
         }
 
     def get_all_tools(self) -> list[BaseTool]:
@@ -538,48 +249,3 @@ class ReporterToolRegistry:
 
         return "\n\n".join(tool_sections)
 
-    @staticmethod
-    def convert_search_results_to_sources(search_results: list[CleanedSearchResult]) -> list[StorySource]:
-        """Convert search results to StorySource objects.
-
-        Args:
-            search_results: List of CleanedSearchResult objects
-
-        Returns:
-            List of StorySource objects
-        """
-        story_sources: list[StorySource] = []
-        for result in search_results:
-            if hasattr(result, "url") and hasattr(result, "title"):
-                # Get full content if available, otherwise use snippet/body
-                full_content = getattr(result, "content", None) or getattr(result, "full_text", None)
-                summary_text = getattr(result, "snippet", None) or getattr(result, "body", None)
-
-                source = StorySource(
-                    url=result.url,
-                    title=result.title,
-                    summary=summary_text,
-                    content=full_content,  # Include full scraped content if available
-                    source_type="search",
-                    accessed_at=datetime.now()
-                )
-                story_sources.append(source)
-
-        return story_sources
-
-    @staticmethod
-    def convert_youtube_results_to_sources(youtube_result: Any) -> list[StorySource]:
-        """Convert YouTube tool results to StorySource objects.
-
-        Args:
-            youtube_result: YouTubeToolResult object
-
-        Returns:
-            List of StorySource objects
-        """
-        # Use Pydantic model validation instead of hasattr
-        try:
-            return youtube_result.sources if youtube_result.sources else []
-        except AttributeError:
-            logger.warning("YouTubeToolResult missing sources field")
-            return []

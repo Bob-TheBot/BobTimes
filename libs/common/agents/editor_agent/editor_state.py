@@ -8,7 +8,7 @@ from agents.editor_agent.editor_tools import (
     empty_topics_assigned,
     empty_topics_collected,
 )
-from agents.types import EditorGoal, FieldTopicRequest, ReporterField, StoryReviewStatus
+from agents.types import EditorGoal, FieldTopicRequest, JournalistField, StoryReviewStatus
 from pydantic import BaseModel, Field
 
 
@@ -24,7 +24,7 @@ class EditorState(BaseModel):
     stories_per_field: int
 
     # Progress tracking
-    topics_collected: dict[ReporterField, list[str]] = Field(default_factory=empty_topics_collected)
+    topics_collected: dict[JournalistField, list[str]] = Field(default_factory=empty_topics_collected)
     topics_assigned: dict[str, str] = Field(default_factory=empty_topics_assigned)  # reporter_id -> topic
     stories_collected: dict[str, StoryDraft] = Field(default_factory=empty_stories_collected)
     stories_review_status: dict[str, StoryReviewStatus] = Field(default_factory=dict)  # story_id -> StoryReviewStatus
@@ -35,7 +35,7 @@ class EditorState(BaseModel):
     publish_retry_count: dict[str, int] = Field(default_factory=dict)  # story_id -> retry_count
 
     # Active reporters
-    active_reporters: dict[str, ReporterField] = Field(default_factory=empty_reporters)
+    active_reporters: dict[str, JournalistField] = Field(default_factory=empty_reporters)
 
     # History
     action_history: list[str] = Field(default_factory=empty_action_history)

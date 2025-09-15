@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 # Import types from types module to avoid circular imports
-from ..types import EconomicsSubSection, ReporterField, ScienceSubSection, TechnologySubSection
+from ..types import EconomicsSubSection, JournalistField, ScienceSubSection, TechnologySubSection
 
 
 class ImageSourceType(StrEnum):
@@ -56,7 +56,7 @@ class StoryDraft(BaseModel):
     title: str
     content: str
     summary: str
-    field: ReporterField
+    field: JournalistField
     sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None  # Sub-section within the field
     sources: list[StorySource] = Field(default_factory=_empty_story_source_list)
     keywords: list[str] = Field(default_factory=list)
@@ -95,13 +95,13 @@ class TopicList(BaseModel):
     """List of trending topics found by reporter."""
     reasoning: str  # Why these topics were selected
     topics: list[str]
-    field: ReporterField
+    field: JournalistField
     sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None  # Sub-section within the field
 
 
 class ResearchResult(BaseModel):
     """Research findings about a specific topic."""
-    field: ReporterField
+    field: JournalistField
     sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None  # Sub-section within the field
     facts: list[str]
     sources: list[StorySource] = Field(default_factory=_empty_story_source_list)

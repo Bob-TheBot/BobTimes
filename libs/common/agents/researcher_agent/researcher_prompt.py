@@ -1,9 +1,9 @@
-"""Reporter agent prompt building and formatting."""
+"""Researcher agent prompt building and formatting."""
 
 from agents.models.story_models import AgentResponse, ResearchResult, StoryDraft, TopicList
 from agents.models.task_models import JournalistTask
-from agents.reporter_agent.reporter_state import ReporterState, TaskPhase
-from agents.reporter_agent.reporter_tools import ReporterToolRegistry
+from agents.researcher_agent.researcher_state import ResearcherState, TaskPhase
+from agents.researcher_agent.researcher_tools import ResearcherToolRegistry
 from agents.types import EconomicsSubSection, JournalistField, ScienceSubSection, TaskType, TechnologySubSection
 from pydantic import BaseModel
 
@@ -20,14 +20,14 @@ class SubSectionConfig(BaseModel):
 
 
 class FieldConfig(BaseModel):
-    """Configuration for a reporter field."""
+    """Configuration for a researcher field."""
 
     guidelines: str
     sub_sections: dict[str, SubSectionConfig]
 
 
-class ReporterConfiguration:
-    """Centralized configuration for reporter agent fields and sub-sections."""
+class ResearcherConfiguration:
+    """Centralized configuration for researcher agent fields and sub-sections."""
 
     # Field-specific guidelines
     FIELD_GUIDELINES: dict[JournalistField, str] = {
@@ -160,34 +160,34 @@ class ReporterConfiguration:
 # ============================================================================
 
 
-class ReporterPromptBuilder:
-    """Builds prompts for reporter agent interactions."""
+class ResearcherPromptBuilder:
+    """Builds prompts for researcher agent interactions."""
 
-    def __init__(self, tool_registry: ReporterToolRegistry) -> None:
+    def __init__(self, tool_registry: ResearcherToolRegistry) -> None:
         """Initialize with tool registry for dynamic tool information."""
         self.tool_registry = tool_registry
 
     def create_system_prompt(self, field: JournalistField, sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None) -> str:
-        """Create the base system prompt for the reporter agent.
+        """Create the base system prompt for the researcher agent.
 
         Args:
-            field: The field this reporter specializes in
+            field: The field this researcher specializes in
             sub_section: Optional sub-section within the field
 
         Returns:
             System prompt string
         """
         # Base role description
-        base_prompt = f"""You are an experienced {field.value} reporter for a major newspaper.
-Your role is to research and write news stories in your field of expertise.
+        base_prompt = f"""You are an experienced {field.value} researcher for a major newspaper.
+Your role is to discover trending topics and research them thoroughly, then store findings in SharedMemoryStore for reporters to use. You do NOT write stories.
 
 # FIELD-SPECIFIC GUIDELINES
-{ReporterConfiguration.get_field_guidelines(field)}"""
+{ResearcherConfiguration.get_field_guidelines(field)}"""
 
         # Add sub-section specific guidance if available
         if sub_section:
             base_prompt += f"\n\n# SUB-SECTION FOCUS: {sub_section.value.upper()}\n"
-            guidance = ReporterConfiguration.get_sub_section_guidance(sub_section)
+            guidance = ResearcherConfiguration.get_sub_section_guidance(sub_section)
             if guidance:
                 base_prompt += f"When reporting on this sub-section: {guidance}"
 
@@ -204,18 +204,15 @@ Your role is to research and write news stories in your field of expertise.
 6. Use active voice and clear, concise language
 7. Avoid bias and maintain journalistic integrity
 
-# WORKFLOW OVERVIEW (Memory-Only Reporter)
-Your role is writing only. You do NOT perform web research. You retrieve previously researched content from shared memory and write the story.
+# WORKFLOW PHASES
+Your work focuses on research and memory storage:
 
-## MEMORY-FIRST ONLY
-- Use SharedMemoryStore as the single source of truth for research materials
-- Retrieve content with the `fetch_from_memory` tool using the assigned topic (or the closest matching topic key)
-- Do not use search, scrape, or youtube tools (they are not available to you)
-
-## WRITING
-- After retrieving content from memory, write a comprehensive, well-structured StoryDraft
-- Base all claims on the retrieved sources; include sources in the draft
-- Return a complete StoryDraft when finished
+## PHASE: RESEARCH
+- Use youtube_search, search, and scrape tools to gather information
+- Accumulate facts and credible sources about the topic
+- Continue until you have sufficient reliable sources (up to 4 iterations)
+- Save sources to SharedMemoryStore under clear, reusable topic keys
+- Return a ResearchResult when research is sufficient
 
 # AVAILABLE TOOLS
 
@@ -227,32 +224,53 @@ You have access to the following tools. Use the EXACT tool names shown below:
 
 {self.tool_registry.format_tools_for_prompt()}
 
+## YouTube Tool Strategy
+
+🎯 **IMPORTANT**: The youtube_search tool is your PRIMARY source for discovering trending topics in your field!
+
+**Why YouTube channels matter:**
+- Industry experts share insights before they hit mainstream news
+- Real-time discussions about emerging trends and technologies
+- Specialized content creators focus on your exact field/subsection
+- Community reactions and expert analysis provide story angles
+
+**When to use youtube_search:**
+- **ALWAYS** for topic discovery tasks - use it FIRST before search tool
+- For finding expert perspectives on breaking news
+- To discover emerging trends in your specialized area
+- To get technical insights and community reactions
+
+**Your configured channels are field/subsection-specific:**
+- Use your field and subsection parameters when calling youtube_search
+- These channels are specifically curated for your reporting beat
+- They provide insider knowledge that mainstream news sources miss
+
 # OUTPUT FORMAT
 You must respond with an AgentResponse object:
 {AgentResponse.model_json_schema()}
 
 The response must contain either:
 1. A tool_call to execute a tool (with name and parameters)
-2. A final response (story_draft)
+2. A final response (topic_list or research_result based on task type)
 
 # CRITICAL RULES
 - You must either USE A TOOL or PROVIDE A FINAL ANSWER
 - Never provide reasoning without taking action
-- Do not perform external research; fetch from memory only
-- In writing phase: use fetch_from_memory then return StoryDraft
+- In research phase: use tools or return ResearchResult
+- In writing phase: use tools or return StoryDraft
 - Always respond with valid JSON matching the AgentResponse schema
-- **IMPORTANT**: Only use the EXACT tool names listed above (e.g., `fetch_from_memory`)
-- **NEVER** make up tool names
+- **IMPORTANT**: Only use the EXACT tool names listed above (e.g., `search`, `scrape`)
+- **NEVER** make up tool names like "search_tool" or "scraper_tool"
 - **ERROR HANDLING**: If you see tool execution failures in RECENT TOOL EXECUTIONS, fix your parameters based on the error messages
-- **PARAMETER VALIDATION**: Always check error messages for parameter format issues
+- **PARAMETER VALIDATION**: Always check error messages for parameter format issues (e.g., use 'url' not 'urls')
 """
         return base_prompt
 
-    def build_task_prompt(self, state: ReporterState) -> str:
+    def build_task_prompt(self, state: ResearcherState) -> str:
         """Build a complete prompt for the current task state.
 
         Args:
-            state: Current reporter state
+            state: Current researcher state
 
         Returns:
             Complete prompt for the LLM
@@ -276,27 +294,18 @@ The response must contain either:
                 "",
             ])
 
-            # Explicitly instruct the reporter to IGNORE any forbidden topics that may be listed in guidelines
-            prompt_parts.extend([
-                "# FORBIDDEN TOPICS POLICY",
-                "If the EDITORIAL GUIDELINES include a 'FORBIDDEN TOPICS' section, you must strictly avoid them:",
-                "- Do NOT propose, research, or write about any topic listed under FORBIDDEN TOPICS.",
-                "- Do NOT include topics that are substantially similar (same core subject, phrasing, or entities).",
-                "- If a discovered topic overlaps with a forbidden one, discard it and find an alternative.",
-                "- Ensure TopicList and StoryDraft contain ZERO forbidden or overlapping topics.",
-                "",
-            ])
-
         # Add task-specific instructions
-        if task.name == TaskType.WRITE_STORY:
-            prompt_parts.extend(self._build_write_story_instructions(task, state))
+        if task.name == TaskType.FIND_TOPICS:
+            prompt_parts.extend(self._build_find_topics_instructions(task, state))
+        elif task.name == TaskType.RESEARCH_TOPIC:
+            prompt_parts.extend(self._build_research_topic_instructions(task, state))
 
         # Add state information
         prompt_parts.extend(["", "# CURRENT STATE", self._format_state_for_prompt(state)])
 
         return "\n".join(prompt_parts)
 
-    def _build_find_topics_instructions(self, task: JournalistTask, state: ReporterState) -> list[str]:
+    def _build_find_topics_instructions(self, task: JournalistTask, state: ResearcherState) -> list[str]:
         """Build instructions for find topics task."""
         instructions = [
             "# INSTRUCTIONS FOR FIND_TOPICS:",
@@ -385,21 +394,11 @@ The response must contain either:
                 "   - Include unique YouTube topics that show emerging trends"
             ])
 
-        instructions.extend([
-            "",
-            "SIMILARITY SCREENING (MANDATORY)",
-            "- Compare each candidate topic with the 'FORBIDDEN TOPICS' in EDITORIAL GUIDELINES.",
-            "- Perform semantic similarity, considering named entities (people, orgs, products), core subject/event, timeframe, and paraphrases/near-duplicates.",
-            "- Treat as similar if it refers to the same core topic or is a rephrasing; discard it and propose an alternative.",
-            "- Only submit topics with ZERO overlap to forbidden topics.",
-            "",
-            "Expected TopicList schema:",
-            f"{TopicList.model_json_schema()}"
-        ])
+        instructions.extend(["", "Expected TopicList schema:", f"{TopicList.model_json_schema()}"])
 
         return instructions
 
-    def _build_research_topic_instructions(self, task: JournalistTask, state: ReporterState) -> list[str]:
+    def _build_research_topic_instructions(self, task: JournalistTask, state: ResearcherState) -> list[str]:
         """Build instructions for research topic task."""
         instructions = [
             "# INSTRUCTIONS FOR RESEARCH_TOPIC:",
@@ -452,7 +451,7 @@ The response must contain either:
 
         return instructions
 
-    def _build_write_story_instructions(self, task: JournalistTask, state: ReporterState) -> list[str]:
+    def _build_write_story_instructions(self, task: JournalistTask, state: ResearcherState) -> list[str]:
         """Build instructions for write story task."""
         # Check if we have memory sources available
         memory_sources_available = len(state.sources) > 0
@@ -481,16 +480,22 @@ The response must contain either:
             ]
 
         elif state.task_phase == TaskPhase.RESEARCH:
-            # Memory-only retrieval before writing
+            # Research phase instructions - check memory first, then search
             from agents.shared_memory_store import get_shared_memory_store
             memory_store = get_shared_memory_store()
             available_memory_topics = memory_store.list_topics(field=task.field.value)
 
+            warning_msg = ""
+            if state.research_iteration_count >= 2:
+                warning_msg = f"\n⚠️  WARNING: Research iteration {state.research_iteration_count + 1}/4 - Task will FAIL if no sources are found!"
+
             instructions = [
-                "# MEMORY RETRIEVAL BEFORE WRITING",
+                "# CURRENT PHASE: RESEARCH",
                 f"Topic: {task.topic}",
+                f"Research Progress: {len(state.sources)}/{task.min_sources} sources found",
+                f"Research Iteration: {state.research_iteration_count + 1}/4 (max 4 iterations){warning_msg}",
                 "",
-                "🧠 MEMORY-FIRST STRATEGY:",
+                "🧠 MEMORY-FIRST RESEARCH STRATEGY:",
             ]
 
             if available_memory_topics:
@@ -498,23 +503,40 @@ The response must contain either:
                     f"Available topics in SharedMemoryStore for {task.field.value}:",
                     *[f"  - '{topic}'" for topic in available_memory_topics],
                     "",
-                    "1. Choose the MOST SIMILAR topic key to the assigned topic",
-                    f"   - If '{task.topic}' closely matches any memory topic, call fetch_from_memory",
+                    "1. FIRST: Check if your topic matches any memory topic above",
+                    f"   - If '{task.topic}' is similar to any memory topic, use fetch_from_memory tool",
                     f'   - Use: {{"topic_key": "exact_memory_topic_name", "field": "{task.field.value}"}}',
                     "   - This gives you pre-validated research content instantly",
                     "",
-                    "2. After fetching, transition to writing the StoryDraft using those sources",
+                    "2. THEN: If no memory match or need more content, use search/scrape tools",
+                    f"   - Search for: '{task.topic}'",
+                    "   - Scrape promising URLs for detailed content",
+                    "",
                 ])
             else:
                 instructions.extend([
-                    "No topics found in memory for this field. You cannot conduct web research.",
-                    "Return a final JSON response explaining that no memory exists for the assigned topic.",
+                    "No topics found in memory - use traditional research methods:",
+                    "",
                 ])
 
             instructions.extend([
+                "RESEARCH INSTRUCTIONS:",
+                f"🥇 PRIORITY: Use fetch_from_memory if topic matches memory",
+                f"🥈 FALLBACK: Search EXACTLY for: '{task.topic}' (use this exact text as query)",
+                "   - Use search tool with 'news' search_type and 'time_limit': 'w'",
+                "   - This will give you source URLs to investigate",
                 "",
-                "CRITICAL: Do NOT use web search or scraping. Memory only.",
-                "Expected ResearchResult schema (only if summarizing memory content before writing):",
+                "🥉 DETAILED: Use scrape tool to get detailed content from EACH promising source URL",
+                "   - Scrape at least 2-3 URLs from your search results",
+                '   - Use: {"url": "single_url_here"} format (not arrays!)',
+                "   - Look for facts, quotes, statistics, company names, dates, numbers",
+                "",
+                f"🎯 COLLECT: Gather at least {task.min_sources} reliable sources with detailed facts",
+                "📝 RETURN: Once you have sufficient facts, return a ResearchResult",
+                "",
+                "CRITICAL: You must either use a tool OR return a ResearchResult",
+                "",
+                "Expected ResearchResult schema:",
                 f"{ResearchResult.model_json_schema()}",
             ])
 
@@ -544,11 +566,11 @@ The response must contain either:
                 f"{StoryDraft.model_json_schema()}",
             ]
 
-    def _format_state_for_prompt(self, state: ReporterState) -> str:
+    def _format_state_for_prompt(self, state: ResearcherState) -> str:
         """Format COMPLETE state for inclusion in prompt.
 
         Args:
-            state: Current reporter state
+            state: Current researcher state
 
         Returns:
             Complete state dump as formatted string

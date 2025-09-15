@@ -8,7 +8,7 @@ from enum import StrEnum
 from pydantic import BaseModel, Field
 
 
-class ReporterField(StrEnum):
+class JournalistField(StrEnum):
     """Fields of expertise for reporter agents."""
     ECONOMICS = "economics"
     TECHNOLOGY = "technology"
@@ -100,6 +100,7 @@ class QualityThreshold(StrEnum):
 
 class AgentType(StrEnum):
     """Types of agents in the system."""
+    RESEARCHER = "researcher"
     REPORTER = "reporter"
     EDITOR = "editor"
 
@@ -173,7 +174,7 @@ class RequiredAction(StrEnum):
 
 class FieldTopicRequest(BaseModel):
     """Request for news generation with field and optional sub-section."""
-    field: ReporterField
+    field: JournalistField
     sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None
 
 
@@ -185,11 +186,11 @@ class AgentMetricKey(StrEnum):
     EDITOR_MAIN = "editor_main"
 
     @classmethod
-    def from_reporter_field(cls, field: ReporterField) -> "AgentMetricKey":
+    def from_reporter_field(cls, field: JournalistField) -> "AgentMetricKey":
         """Get the metric key for a reporter field."""
         field_to_key = {
-            ReporterField.ECONOMICS: cls.REPORTER_ECONOMICS,
-            ReporterField.TECHNOLOGY: cls.REPORTER_TECHNOLOGY,
-            ReporterField.SCIENCE: cls.REPORTER_SCIENCE,
+            JournalistField.ECONOMICS: cls.REPORTER_ECONOMICS,
+            JournalistField.TECHNOLOGY: cls.REPORTER_TECHNOLOGY,
+            JournalistField.SCIENCE: cls.REPORTER_SCIENCE,
         }
         return field_to_key[field]

@@ -15,7 +15,7 @@ import asyncio
 import sys
 from pathlib import Path
 
-from agents.types import ReporterField, FieldTopicRequest
+from agents.types import JournalistField, FieldTopicRequest
 from app.services.newspaper_service import NewspaperService
 
 # Add the backend directory to Python path
@@ -63,16 +63,16 @@ Examples:
     return parser.parse_args()
 
 
-def get_available_fields() -> list[ReporterField]:
+def get_available_fields() -> list[JournalistField]:
     """Get all available reporter fields."""
     return [
-        ReporterField.TECHNOLOGY,
-        ReporterField.ECONOMICS,
-        ReporterField.SCIENCE
+        JournalistField.TECHNOLOGY,
+        JournalistField.ECONOMICS,
+        JournalistField.SCIENCE
     ]
 
 
-def parse_topics(topic_args: list[str]) -> list[ReporterField]:
+def parse_topics(topic_args: list[str]) -> list[JournalistField]:
     """Parse topic arguments into ReporterField enums."""
     if not topic_args:
         return []
@@ -80,7 +80,7 @@ def parse_topics(topic_args: list[str]) -> list[ReporterField]:
     if "all" in topic_args:
         return get_available_fields()
 
-    topics: list[ReporterField] = []
+    topics: list[JournalistField] = []
     available_fields = {field.value: field for field in get_available_fields()}
 
     for topic in topic_args:
@@ -93,7 +93,7 @@ def parse_topics(topic_args: list[str]) -> list[ReporterField]:
     return topics
 
 
-async def run_news_cycle(topics: list[ReporterField]) -> bool:
+async def run_news_cycle(topics: list[JournalistField]) -> bool:
     """Run a news cycle with the specified topics."""
     try:
         logger.info("🚀 Starting news cycle runner")

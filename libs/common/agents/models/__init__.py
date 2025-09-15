@@ -17,7 +17,7 @@ from .submission_models import (
 )
 
 # Task models
-from .task_models import EditorTask, ReporterTask
+from .task_models import EditorTask, JournalistTask
 
 __all__ = [
     # Story models
@@ -30,7 +30,7 @@ __all__ = [
     "StorySubmission",
     "PublishedStory",
     # Task models
-    "ReporterTask",
+    "JournalistTask",
     "EditorTask",
     # Performance models
     "AgentPerformance",

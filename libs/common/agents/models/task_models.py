@@ -7,14 +7,15 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 # Import types from types module to avoid circular imports
-from ..types import EconomicsSubSection, NewspaperSection, QualityThreshold, ReporterField, ScienceSubSection, TaskType, TechnologySubSection
+from ..types import AgentType, EconomicsSubSection, NewspaperSection, QualityThreshold, JournalistField, ScienceSubSection, TaskType, TechnologySubSection
 from .submission_models import StorySubmission
 
 
-class ReporterTask(BaseModel):
-    """Task assignment for a reporter agent."""
+class JournalistTask(BaseModel):
+    """Task assignment for a journalist agent."""
+    agent_type: AgentType = AgentType.REPORTER
     name: TaskType  # Type of task (find_topics, write_story)
-    field: ReporterField  # Reporter's field of expertise
+    field: JournalistField  # Reporter's field of expertise
     sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None  # Optional sub-section within the field
     description: str  # Detailed task description
     guidelines: str | None = None  # Additional instructions

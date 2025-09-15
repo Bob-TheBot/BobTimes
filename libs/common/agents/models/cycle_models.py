@@ -12,11 +12,11 @@ from ..types import CycleStatus
 # Import CyclePerformanceMetrics directly for default factory
 from .performance_models import CyclePerformanceMetrics
 from .submission_models import EditorialDecision, PublishedStory, StorySubmission
-from .task_models import ReporterTask
+from .task_models import JournalistTask
 
 # Typed default factories to aid static analysis without string annotations
 
-def _empty_reporter_task_list() -> list[ReporterTask]:
+def _empty_reporter_task_list() -> list[JournalistTask]:
     return []
 
 
@@ -37,7 +37,7 @@ class NewsCycle(BaseModel):
     cycle_id: str | None = None
     start_time: datetime = Field(default_factory=datetime.now)
     end_time: datetime | None = None
-    reporter_tasks: list[ReporterTask] = Field(default_factory=_empty_reporter_task_list)
+    reporter_tasks: list[JournalistTask] = Field(default_factory=_empty_reporter_task_list)
     submissions: list[StorySubmission] = Field(default_factory=_empty_story_submission_list)
     editorial_decisions: list[EditorialDecision] = Field(default_factory=_empty_editorial_decision_list)
     published_stories: list[PublishedStory] = Field(default_factory=_empty_published_story_list)

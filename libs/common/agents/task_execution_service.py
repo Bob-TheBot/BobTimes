@@ -6,8 +6,8 @@ from typing import Any
 
 from agents.image_processor import process_story_images
 from agents.models.story_models import ResearchResult, StoryDraft, TopicList
-from agents.models.task_models import ReporterTask
-from agents.types import EconomicsSubSection, ReporterField, ScienceSubSection, TaskType, TechnologySubSection
+from agents.models.task_models import JournalistTask
+from agents.types import EconomicsSubSection, JournalistField, ScienceSubSection, TaskType, TechnologySubSection
 from core.exceptions import ResearchFailureError
 from core.llm_service import LLMService, ModelSpeed
 from core.logging_service import get_logger
@@ -18,17 +18,24 @@ logger = get_logger(__name__)
 class TaskExecutionService:
     """Service for executing tasks by dynamically spawning appropriate agents."""
 
-    def __init__(self, create_reporter: Callable[[ReporterField, TechnologySubSection | EconomicsSubSection | ScienceSubSection |  None], Any], llm_service: LLMService | None = None):
+    def __init__(
+        self,
+        create_reporter: Callable[[JournalistField, TechnologySubSection | EconomicsSubSection | ScienceSubSection | None], Any],
+        create_researcher: Callable[[JournalistField, TechnologySubSection | EconomicsSubSection | ScienceSubSection | None], Any],
+        llm_service: LLMService | None = None,
+    ):
         """Initialize the task execution service.
 
         Args:
             create_reporter: Factory function for creating reporter agents (field, sub_section)
+            create_researcher: Factory function for creating researcher agents (field, sub_section)
             llm_service: LLM service for image generation
         """
         self.create_reporter = create_reporter
+        self.create_researcher = create_researcher
         self.llm_service = llm_service
 
-    async def execute_reporter_task(self, task: ReporterTask, model_speed: ModelSpeed = ModelSpeed.FAST, max_retries: int = 2) -> StoryDraft | TopicList | ResearchResult:
+    async def execute_reporter_task(self, task: JournalistTask, model_speed: ModelSpeed = ModelSpeed.FAST, max_retries: int = 2) -> StoryDraft | TopicList | ResearchResult:
         """Execute a reporter task by spawning a temporary reporter agent with retry logic.
 
         Args:
@@ -188,9 +195,145 @@ class TaskExecutionService:
                 # Otherwise, continue to next retry iteration
                 continue
 
-        # This should never be reached due to the raise statements above
+
+        # If we exit the retry loop without returning, propagate the last exception if any,
+        # otherwise signal an unexpected state to satisfy the declared return type.
         if last_exception:
             raise last_exception
         raise RuntimeError(f"Unexpected end of retry loop for task: {task.name.value}")
+
+
+    async def execute_researcher_task(self, task: JournalistTask, model_speed: ModelSpeed = ModelSpeed.FAST, max_retries: int = 2) -> TopicList | ResearchResult:
+        """Execute a researcher task by spawning a temporary researcher agent with retry logic.
+
+        Args:
+            task: The researcher task to execute
+            model_speed: Model speed preference for LLM operations
+            max_retries: Maximum number of retry attempts on failure (default: 2)
+
+        Returns:
+            Task result (TopicList or ResearchResult)
+        """
+        logger.info(
+            f"🎯 Spawning researcher for task: {task.name.value}",
+            task_type=task.name.value,
+            field=task.field.value,
+            sub_section=task.sub_section.value if task.sub_section else "none",
+            description=task.description[:100] + "..." if len(task.description) > 100 else task.description,
+            topic=(task.topic[:50] + "..." if task.topic and len(task.topic) > 50 else task.topic) if task.topic else "No specific topic",
+            max_retries=max_retries,
+        )
+
+        last_exception = None
+
+        for attempt in range(max_retries + 1):
+            is_retry = attempt > 0
+            if is_retry:
+                logger.info(
+                    f"🔄 Retrying researcher task (attempt {attempt + 1}/{max_retries + 1})",
+                    task_type=task.name.value,
+                    field=task.field.value,
+                    attempt=attempt + 1,
+                    max_attempts=max_retries + 1,
+                )
+                # Small delay between retries
+                await asyncio.sleep(2 ** attempt)
+
+            try:
+                # Spawn researcher for this specific task
+                researcher = self.create_researcher(task.field, task.sub_section)
+
+                logger.info(
+                    f"👤 Researcher agent created for {task.field.value}",
+                    field=task.field.value,
+                    researcher_id=getattr(researcher, "researcher_id", "unknown"),
+                    attempt=attempt + 1 if is_retry else 1,
+                )
+
+                # Execute the task
+                result = await researcher.execute_task(task, model_speed=model_speed)
+
+                # Log completion info
+                if isinstance(result, TopicList):
+                    logger.info(
+                        "✅ Topic discovery task completed successfully",
+                        task_type=task.name.value,
+                        field=task.field.value,
+                        topics_count=len(result.topics),
+                        topics=", ".join(result.topics[:3]) + ("..." if len(result.topics) > 3 else ""),
+                        attempt=attempt + 1 if is_retry else 1,
+                    )
+                elif isinstance(result, ResearchResult):
+                    logger.info(
+                        "✅ Research task completed successfully",
+                        task_type=task.name.value,
+                        field=task.field.value,
+                        sources_count=len(result.sources),
+                        facts_count=len(getattr(result, "facts", [])),
+                        attempt=attempt + 1 if is_retry else 1,
+                    )
+                else:
+                    logger.info(
+                        "✅ Researcher task completed successfully",
+                        task_type=task.name.value,
+                        field=task.field.value,
+                        result_type=type(result).__name__,
+                        attempt=attempt + 1 if is_retry else 1,
+                    )
+
+                return result
+
+            except ResearchFailureError as e:
+                last_exception = e
+                logger.error(
+                    f"❌ Researcher task failed due to research failure (attempt {attempt + 1}/{max_retries + 1}): {task.name.value}",
+                    task_type=task.name.value,
+                    field=task.field.value,
+                    attempt=attempt + 1,
+                    max_attempts=max_retries + 1,
+                    error_code=e.error_code or "RESEARCH_FAILURE",
+                    error_message=e.message,
+                    research_iterations=e.details.get("research_iterations", 0),
+                    topic=e.details.get("topic", "Unknown"),
+                    researcher_id=e.details.get("researcher_id", "Unknown"),
+                    min_sources_required=e.details.get("min_sources_required", 0),
+                )
+
+                if attempt >= max_retries:
+                    logger.error(
+                        f"❌ All retry attempts exhausted for research failure: {task.name.value}",
+                        task_type=task.name.value,
+                        field=task.field.value,
+                        total_attempts=max_retries + 1,
+                    )
+                    raise
+                continue
+
+            except Exception as e:
+                last_exception = e
+                logger.error(
+                    f"❌ Researcher task failed (attempt {attempt + 1}/{max_retries + 1}): {task.name.value}",
+                    task_type=task.name.value,
+                    field=task.field.value,
+                    attempt=attempt + 1,
+                    max_attempts=max_retries + 1,
+                    error=str(e),
+                )
+
+                if attempt >= max_retries:
+                    logger.error(
+                        f"❌ All retry attempts exhausted for task failure: {task.name.value}",
+                        task_type=task.name.value,
+                        field=task.field.value,
+                        total_attempts=max_retries + 1,
+                    )
+                    raise
+                continue
+
+        if last_exception:
+            raise last_exception
+        raise RuntimeError(f"Unexpected end of retry loop for task: {task.name.value}")
+
+
 
 

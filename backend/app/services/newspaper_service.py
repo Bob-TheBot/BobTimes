@@ -12,7 +12,7 @@ from agents.models.cycle_models import NewsCycle
 from agents.models.performance_models import AgentPerformance, AgentType
 from agents.task_execution_service import TaskExecutionService
 from agents.editor_agent.editor_tools import NewspaperFileStore
-from agents.types import CycleStatus, ReporterField, FieldTopicRequest
+from agents.types import CycleStatus, JournalistField, FieldTopicRequest
 from core.config_service import ConfigService
 from core.llm_service import LLMService
 from core.logging_service import get_logger
@@ -40,7 +40,7 @@ class NewspaperService:
         self.config_service = config_service
         self.llm_service = llm_service
         self.agent_factory = AgentFactory(config_service, llm_service)
-        self.task_service = TaskExecutionService(self.agent_factory.create_reporter, llm_service)
+        self.task_service = TaskExecutionService(self.agent_factory.create_reporter, self.agent_factory.create_researcher, llm_service)
         self.editor: EditorAgent | None = None
         self.current_cycle: NewsCycle | None = None
         self.performance_metrics: dict[str, AgentPerformance] = {}
@@ -66,9 +66,9 @@ class NewspaperService:
         # Default field requests if none provided
         if field_requests is None:
             field_requests = [
-                FieldTopicRequest(field=ReporterField.TECHNOLOGY),
-                FieldTopicRequest(field=ReporterField.SCIENCE),
-                FieldTopicRequest(field=ReporterField.ECONOMICS)
+                FieldTopicRequest(field=JournalistField.TECHNOLOGY),
+                FieldTopicRequest(field=JournalistField.SCIENCE),
+                FieldTopicRequest(field=JournalistField.ECONOMICS)
             ]
         
         logger.info(

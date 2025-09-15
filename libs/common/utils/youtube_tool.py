@@ -72,7 +72,7 @@ class YouTubeToolResult(BaseModel):
     error: str | None = Field(None, description="Error message if failed")
 
 
-class YouTubeReporterTool(BaseTool):
+class YouTubeResearcherTool(BaseTool):
     """YouTube data source tool for reporter agents."""
 
     # Private attributes for internal state
