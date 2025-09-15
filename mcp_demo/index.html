@@ -1,0 +1,1723 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Model Context Protocol (MCP): Complete Interactive Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-blue: #2563eb;    
+            --secondary-blue: #1e40af;
+            --accent-orange: #f59e0b;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --neutral-50: #f8fafc;
+            --neutral-100: #f1f5f9;
+            --neutral-200: #e2e8f0;
+            --neutral-300: #cbd5e1;
+            --neutral-600: #475569;
+            --neutral-700: #334155;
+            --neutral-800: #1e293b;
+            --neutral-900: #0f172a;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, var(--neutral-50) 0%, var(--neutral-100) 100%);
+            color: var(--neutral-700);
+            line-height: 1.6;
+        }
+        
+        .hero-gradient {
+            background: linear-gradient(135deg, var(--primary-blue) 0%, var(--secondary-blue) 50%, #1e3a8a 100%);
+        }
+        
+        .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .interactive-diagram-item {
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            border: 2px solid var(--neutral-200);
+        }
+        .interactive-diagram-item:hover {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border-color: var(--primary-blue);
+            transform: scale(1.05);
+        }
+        .interactive-diagram-item.active {
+            background: linear-gradient(135deg, #dbeafe 0%, #bfdbfe 100%);
+            border-color: var(--primary-blue);
+            box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+        }
+        
+        .code-block {
+            background: var(--neutral-900);
+            color: #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', 'Courier New', monospace;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            border: 1px solid var(--neutral-700);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .syntax-highlight .keyword { color: #f59e0b; font-weight: 600; }
+        .syntax-highlight .string { color: #10b981; }
+        .syntax-highlight .comment { color: #6b7280; font-style: italic; }
+        .syntax-highlight .function { color: #3b82f6; font-weight: 500; }
+        .syntax-highlight .property { color: #8b5cf6; }
+        .syntax-highlight .number { color: #f97316; }
+        
+        .transport-card {
+            border: 2px solid transparent;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .transport-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-blue), var(--accent-orange));
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+        .transport-card:hover::before {
+            transform: scaleX(1);
+        }
+        .transport-card:hover {
+            border-color: var(--primary-blue);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        .transport-card.deprecated {
+            opacity: 0.7;
+            border-color: var(--accent-red);
+            background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%);
+        }
+        .transport-card.deprecated::before {
+            background: var(--accent-red);
+        }
+        .transport-card.recommended {
+            border-color: var(--accent-green);
+            background: linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%);
+        }
+        .transport-card.recommended::before {
+            background: var(--accent-green);
+        }
+        
+        .lifecycle-step {
+            position: relative;
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            border: 2px solid var(--neutral-200);
+            transition: all 0.3s ease;
+        }
+        .lifecycle-step:hover {
+            border-color: var(--primary-blue);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+        }
+        .lifecycle-step::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            right: -25px;
+            width: 0;
+            height: 0;
+            border-left: 15px solid var(--primary-blue);
+            border-top: 12px solid transparent;
+            border-bottom: 12px solid transparent;
+            z-index: 10;
+        }
+        .lifecycle-step:last-child::after {
+            display: none;
+        }
+        
+        .json-rpc-message {
+            border-left: 4px solid var(--primary-blue);
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 1.5rem;
+            margin: 1rem 0;
+            border-radius: 0 8px 8px 0;
+            position: relative;
+        }
+        .json-rpc-message::before {
+            content: attr(data-type);
+            position: absolute;
+            top: -8px;
+            left: 16px;
+            background: var(--primary-blue);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        
+        .sampling-flow {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid var(--accent-orange);
+            border-radius: 12px;
+            padding: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        .sampling-flow::before {
+            content: '🧠';
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 2rem;
+            opacity: 0.3;
+        }
+        
+        .protocol-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--primary-blue);
+            color: white;
+            border-radius: 9999px;
+            font-size: 0.875rem;
+            font-weight: 600;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .status-indicator.active { background: var(--accent-green); }
+        .status-indicator.deprecated { background: var(--accent-red); }
+        .status-indicator.recommended { 
+            background: var(--accent-green); 
+            animation: pulse 2s infinite; 
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary-blue), transparent);
+            margin: 4rem 0;
+        }
+        
+        .nav-link {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary-blue);
+            transition: width 0.3s ease;
+        }
+        .nav-link:hover::after,
+        .nav-link.active::after {
+            width: 100%;
+        }
+        
+        .content-section {
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .content-section.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 450px;
+            width: 100%;
+            background: white;
+            border-radius: 12px;
+            padding: 1rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+            gap: 2rem;
+        }
+        
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--neutral-900);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <!-- Navigation -->
+    <nav class="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <div class="w-8 h-8 bg-gradient-to-br from-blue-500 to-purple-600 rounded-lg mr-3"></div>
+                        <h1 class="text-xl font-bold text-gray-900">MCP Guide</h1>
+                    </div>
+                </div>
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#" data-section="intro" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600 active">Introduction</a>
+                    <a href="#" data-section="transport" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Transport Layer</a>
+                    <a href="#" data-section="concepts" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Core Concepts</a>
+                    <a href="#" data-section="fastmcp" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600">FastMCP SDK</a>
+                    <a href="#" data-section="implementation" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Implementation</a>
+                    <a href="#" data-section="ecosystem" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-blue-600">Ecosystem</a>
+                </div>
+                <div class="md:hidden">
+                    <select id="mobile-nav" class="bg-white border border-gray-300 rounded-md py-2 px-3 text-sm">
+                        <option value="intro">Introduction</option>
+                        <option value="transport">Transport Layer</option>
+                        <option value="concepts">Core Concepts</option>
+                        <option value="fastmcp">FastMCP SDK</option>
+                        <option value="implementation">Implementation</option>
+                        <option value="ecosystem">Ecosystem</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Introduction Section -->
+        <section id="intro" class="content-section active">
+            <!-- Hero Section -->
+            <div class="hero-gradient text-white rounded-2xl p-12 mb-12 relative overflow-hidden">
+                <div class="absolute inset-0 bg-black/10"></div>
+                <div class="relative z-10">
+                    <div class="max-w-4xl mx-auto text-center">
+                        <div class="protocol-badge mb-6">
+                            <span class="status-indicator recommended"></span>
+                            JSON-RPC 2.0 Protocol
+                        </div>
+                        <h1 class="text-5xl font-bold mb-6">Model Context Protocol</h1>
+                        <p class="text-xl mb-8 opacity-90">The standardized communication highway between AI applications and context providers, enabling seamless integration with data sources and tools.</p>
+                        <div class="flex flex-wrap justify-center gap-4 text-sm">
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">🔧 Tools Integration</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">📄 Resource Access</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">💬 Prompt Templates</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">🧠 LLM Sampling</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- What is MCP -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-3xl font-bold mb-6 text-center">What is the Model Context Protocol?</h2>
+                <div class="grid md:grid-cols-2 gap-8 items-center">
+                    <div>
+                        <p class="text-lg mb-6">MCP is an open protocol that standardizes how applications provide context to Large Language Models (LLMs). Think of it as the "USB-C for AI" - a universal standard that enables seamless communication between AI models and various data sources.</p>
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-blue-600 text-sm">✓</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Standardized Communication</h4>
+                                    <p class="text-gray-600 text-sm">Uses JSON-RPC 2.0 for consistent message exchange</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-blue-600 text-sm">✓</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Multiple Transport Options</h4>
+                                    <p class="text-gray-600 text-sm">Supports stdio, SSE, and Streamable HTTP</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-blue-600 text-sm">✓</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Bidirectional Communication</h4>
+                                    <p class="text-gray-600 text-sm">Both clients and servers can initiate requests</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6">
+                        <h3 class="font-bold text-lg mb-4 text-center">MCP Architecture</h3>
+                        <div class="space-y-4">
+                            <div class="bg-white rounded-lg p-4 border-2 border-blue-200">
+                                <div class="text-center">
+                                    <div class="w-12 h-12 bg-blue-500 rounded-full mx-auto mb-2 flex items-center justify-center text-white font-bold">AI</div>
+                                    <h4 class="font-semibold">MCP Client</h4>
+                                    <p class="text-xs text-gray-600">LLM Application</p>
+                                </div>
+                            </div>
+                            <div class="flex justify-center">
+                                <div class="w-0.5 h-8 bg-blue-300"></div>
+                            </div>
+                            <div class="bg-white rounded-lg p-4 border-2 border-green-200">
+                                <div class="text-center">
+                                    <div class="w-12 h-12 bg-green-500 rounded-full mx-auto mb-2 flex items-center justify-center text-white font-bold">S</div>
+                                    <h4 class="font-semibold">MCP Server</h4>
+                                    <p class="text-xs text-gray-600">Context Provider</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Benefits -->
+            <div class="feature-grid mb-12">
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🔌</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Universal Connectivity</h3>
+                    <p class="text-gray-600">Connect any AI application to any data source or tool through a standardized interface.</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">⚡</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">High Performance</h3>
+                    <p class="text-gray-600">Efficient JSON-RPC communication with multiple transport options for optimal performance.</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🛡️</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Secure & Reliable</h3>
+                    <p class="text-gray-600">Built-in error handling, capability negotiation, and secure communication patterns.</p>
+                </div>
+            </div>
+
+            <!-- Sampling Feature -->
+            <div class="sampling-flow mb-12">
+                <h2 class="text-2xl font-bold mb-6">Advanced Feature: Sampling</h2>
+                <div class="grid md:grid-cols-2 gap-8 items-center">
+                    <div>
+                        <p class="mb-4">Sampling allows MCP servers to request LLM completions through the client, enabling servers to access "intelligence" for their tasks.</p>
+                        <div class="space-y-3">
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-orange-600 text-sm">1</span>
+                                </div>
+                                <span class="text-sm">Server requests LLM assistance</span>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-orange-600 text-sm">2</span>
+                                </div>
+                                <span class="text-sm">Client reviews and processes request</span>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-orange-600 text-sm">3</span>
+                                </div>
+                                <span class="text-sm">LLM generates response</span>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-orange-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-orange-600 text-sm">4</span>
+                                </div>
+                                <span class="text-sm">Client returns result to server</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-block">
+<span class="comment">// Sampling Request Example</span>
+{
+  <span class="property">"method"</span>: <span class="string">"sampling/createMessage"</span>,
+  <span class="property">"params"</span>: {
+    <span class="property">"messages"</span>: [{
+      <span class="property">"role"</span>: <span class="string">"user"</span>,
+      <span class="property">"content"</span>: {
+        <span class="property">"type"</span>: <span class="string">"text"</span>,
+        <span class="property">"text"</span>: <span class="string">"Analyze this data..."</span>
+      }
+    }],
+    <span class="property">"systemPrompt"</span>: <span class="string">"You are a data analyst"</span>,
+    <span class="property">"maxTokens"</span>: <span class="number">100</span>
+  }
+}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Transport Layer Section -->
+        <section id="transport" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Transport Layer</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Understanding MCP's communication methods and choosing the right transport for your use case</p>
+            </div>
+
+            <!-- Transport Options -->
+            <div class="mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Transport Options</h2>
+                <p class="text-center text-gray-600 mb-8">MCP offers three main transport methods, each optimized for different use cases</p>
+
+                <div class="grid lg:grid-cols-3 gap-6">
+                    <!-- Streamable HTTP -->
+                    <div class="transport-card recommended bg-white rounded-xl p-6 shadow-lg">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-semibold">Streamable HTTP</h3>
+                            <div class="flex items-center gap-2">
+                                <span class="status-indicator recommended"></span>
+                                <span class="text-xs font-medium text-green-600">RECOMMENDED</span>
+                            </div>
+                        </div>
+                        <p class="text-gray-600 mb-4">The modern standard for remote connections, introduced in March 2025. Simplifies communication through a single HTTP endpoint.</p>
+                        <div class="space-y-2 mb-4">
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-green-500">✓</span>
+                                <span>Single HTTP endpoint</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-green-500">✓</span>
+                                <span>Easy to implement</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-green-500">✓</span>
+                                <span>Future-proof</span>
+                            </div>
+                        </div>
+                        <div class="code-block text-xs">
+<span class="comment"># FastMCP Configuration</span>
+mcp.run(
+  transport=<span class="string">"streamable-http"</span>,
+  host=<span class="string">"0.0.0.0"</span>,
+  port=<span class="number">8001</span>
+)
+                        </div>
+                    </div>
+
+                    <!-- stdio -->
+                    <div class="transport-card bg-white rounded-xl p-6 shadow-lg">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-semibold">Standard I/O (stdio)</h3>
+                            <div class="flex items-center gap-2">
+                                <span class="status-indicator active"></span>
+                                <span class="text-xs font-medium text-blue-600">ACTIVE</span>
+                            </div>
+                        </div>
+                        <p class="text-gray-600 mb-4">Ideal for local communication, command-line tools, and connecting programs on the same computer via stdin/stdout.</p>
+                        <div class="space-y-2 mb-4">
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-blue-500">✓</span>
+                                <span>Simple & direct</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-blue-500">✓</span>
+                                <span>Local communication</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-blue-500">✓</span>
+                                <span>CLI integration</span>
+                            </div>
+                        </div>
+                        <div class="code-block text-xs">
+<span class="comment"># Client Configuration</span>
+{
+  <span class="property">"command"</span>: <span class="string">"npx"</span>,
+  <span class="property">"args"</span>: [<span class="string">"-y"</span>, <span class="string">"@upstash/context7-mcp"</span>]
+}
+                        </div>
+                    </div>
+
+                    <!-- SSE (Deprecated) -->
+                    <div class="transport-card deprecated bg-white rounded-xl p-6 shadow-lg">
+                        <div class="flex items-center justify-between mb-4">
+                            <h3 class="text-xl font-semibold">Server-Sent Events</h3>
+                            <div class="flex items-center gap-2">
+                                <span class="status-indicator deprecated"></span>
+                                <span class="text-xs font-medium text-red-600">DEPRECATED</span>
+                            </div>
+                        </div>
+                        <p class="text-gray-600 mb-4">Previously used for remote connections. Being phased out in favor of Streamable HTTP for better simplicity and performance.</p>
+                        <div class="space-y-2 mb-4">
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-red-500">⚠</span>
+                                <span>Two communication channels</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-red-500">⚠</span>
+                                <span>More complex setup</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-sm">
+                                <span class="text-red-500">⚠</span>
+                                <span>Being deprecated</span>
+                            </div>
+                        </div>
+                        <div class="code-block text-xs">
+<span class="comment"># Legacy - Not Recommended</span>
+mcp.run(
+  transport=<span class="string">"sse"</span>
+)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Communication Lifecycle -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Communication Lifecycle</h2>
+                <p class="text-center text-gray-600 mb-8">MCP follows a three-phase communication pattern</p>
+
+                <div class="flex flex-col lg:flex-row gap-6 items-center justify-center">
+                    <div class="lifecycle-step flex-1 max-w-sm">
+                        <div class="text-center">
+                            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-2xl">🚀</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">1. Initialization</h3>
+                            <p class="text-sm text-gray-600">Client sends initialize request, server responds with capabilities, client acknowledges with initialized notification.</p>
+                        </div>
+                    </div>
+
+                    <div class="lifecycle-step flex-1 max-w-sm">
+                        <div class="text-center">
+                            <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-2xl">🔄</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">2. Message Exchange</h3>
+                            <p class="text-sm text-gray-600">Bidirectional communication where both client and server can send requests and notifications.</p>
+                        </div>
+                    </div>
+
+                    <div class="lifecycle-step flex-1 max-w-sm">
+                        <div class="text-center">
+                            <div class="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-2xl">🛑</span>
+                            </div>
+                            <h3 class="text-lg font-semibold mb-2">3. Termination</h3>
+                            <p class="text-sm text-gray-600">Either party can send a close command to gracefully terminate the connection.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- JSON-RPC Messages -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">JSON-RPC Message Examples</h2>
+                <p class="text-center text-gray-600 mb-8">Understanding the message format used in MCP communication</p>
+
+                <div class="space-y-6">
+                    <!-- Initialize Request -->
+                    <div class="json-rpc-message" data-type="REQUEST">
+                        <h3 class="font-semibold mb-3">Initialize Request</h3>
+                        <div class="code-block text-sm">
+{
+  <span class="property">"jsonrpc"</span>: <span class="string">"2.0"</span>,
+  <span class="property">"id"</span>: <span class="number">1</span>,
+  <span class="property">"method"</span>: <span class="string">"initialize"</span>,
+  <span class="property">"params"</span>: {
+    <span class="property">"protocolVersion"</span>: <span class="string">"2024-11-05"</span>,
+    <span class="property">"capabilities"</span>: {
+      <span class="property">"tools"</span>: {},
+      <span class="property">"resources"</span>: {}
+    },
+    <span class="property">"clientInfo"</span>: {
+      <span class="property">"name"</span>: <span class="string">"example-client"</span>,
+      <span class="property">"version"</span>: <span class="string">"1.0.0"</span>
+    }
+  }
+}
+                        </div>
+                    </div>
+
+                    <!-- Initialize Response -->
+                    <div class="json-rpc-message" data-type="RESPONSE">
+                        <h3 class="font-semibold mb-3">Initialize Response</h3>
+                        <div class="code-block text-sm">
+{
+  <span class="property">"jsonrpc"</span>: <span class="string">"2.0"</span>,
+  <span class="property">"id"</span>: <span class="number">1</span>,
+  <span class="property">"result"</span>: {
+    <span class="property">"protocolVersion"</span>: <span class="string">"2024-11-05"</span>,
+    <span class="property">"capabilities"</span>: {
+      <span class="property">"tools"</span>: {
+        <span class="property">"listChanged"</span>: <span class="keyword">true</span>
+      },
+      <span class="property">"resources"</span>: {
+        <span class="property">"subscribe"</span>: <span class="keyword">true</span>,
+        <span class="property">"listChanged"</span>: <span class="keyword">true</span>
+      }
+    },
+    <span class="property">"serverInfo"</span>: {
+      <span class="property">"name"</span>: <span class="string">"example-server"</span>,
+      <span class="property">"version"</span>: <span class="string">"1.0.0"</span>
+    }
+  }
+}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Core Concepts Section -->
+        <section id="concepts" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Core Concepts</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Understanding the fundamental building blocks of MCP: Tools, Resources, and Prompts</p>
+            </div>
+
+            <!-- Interactive Architecture Diagram -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Interactive MCP Architecture</h2>
+                <div class="max-w-4xl mx-auto">
+                    <div class="text-center mb-8">
+                        <div class="inline-block p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border-2 border-blue-200">
+                            <div class="flex items-center justify-center gap-4 mb-4">
+                                <div class="w-16 h-16 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold text-xl">AI</div>
+                                <div class="text-left">
+                                    <h3 class="font-bold text-lg">MCP Client</h3>
+                                    <p class="text-sm text-gray-600">LLM Application Host</p>
+                                </div>
+                            </div>
+                            <p class="text-sm text-gray-600">Invokes tools, queries resources, interpolates prompts</p>
+                        </div>
+                    </div>
+
+                    <div class="flex justify-center mb-8">
+                        <div class="w-0.5 h-12 bg-gray-300"></div>
+                    </div>
+
+                    <div class="text-center mb-8">
+                        <div class="inline-block p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200">
+                            <h3 class="font-bold text-lg mb-2">MCP Server</h3>
+                            <p class="text-sm text-gray-600 mb-4">Context Gateway & Primitive Provider</p>
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        <div id="tools-card" class="interactive-diagram-item bg-white rounded-xl p-6 text-center">
+                            <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-3xl">🔧</span>
+                            </div>
+                            <h3 class="font-bold text-lg mb-2">Tools</h3>
+                            <p class="text-sm text-gray-600">Executable functions that perform actions</p>
+                        </div>
+
+                        <div id="resources-card" class="interactive-diagram-item bg-white rounded-xl p-6 text-center">
+                            <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-3xl">📄</span>
+                            </div>
+                            <h3 class="font-bold text-lg mb-2">Resources</h3>
+                            <p class="text-sm text-gray-600">Data sources and content providers</p>
+                        </div>
+
+                        <div id="prompts-card" class="interactive-diagram-item bg-white rounded-xl p-6 text-center">
+                            <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <span class="text-3xl">💬</span>
+                            </div>
+                            <h3 class="font-bold text-lg mb-2">Prompts</h3>
+                            <p class="text-sm text-gray-600">Reusable prompt templates</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Explanations -->
+            <div id="concept-details" class="space-y-8">
+                <!-- Tools Detail -->
+                <div id="tools-detail" class="concept-detail bg-gradient-to-br from-orange-50 to-amber-50 rounded-2xl p-8 border-2 border-orange-200">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">
+                            <span class="text-white text-2xl">🔧</span>
+                        </div>
+                        <h2 class="text-2xl font-bold">Tools: Executable Functions</h2>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-gray-700 mb-4">Tools are functions that MCP servers expose to clients, allowing LLMs to perform actions in the real world. They're the "hands" of your AI assistant.</p>
+                            <div class="space-y-3">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-orange-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Database Operations:</strong> Query, insert, update data</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-orange-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>API Calls:</strong> Interact with external services</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-orange-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>File Operations:</strong> Read, write, manipulate files</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-orange-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Calculations:</strong> Perform complex computations</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-block">
+<span class="comment"># FastMCP Tool Example</span>
+<span class="keyword">@mcp.tool()</span>
+<span class="keyword">def</span> <span class="function">calculate_sum</span>(a: <span class="keyword">float</span>, b: <span class="keyword">float</span>) -> <span class="keyword">float</span>:
+    <span class="string">"""Calculate the sum of two numbers."""</span>
+    <span class="keyword">return</span> a + b
+
+<span class="keyword">@mcp.tool()</span>
+<span class="keyword">def</span> <span class="function">get_weather</span>(city: <span class="keyword">str</span>) -> <span class="keyword">dict</span>:
+    <span class="string">"""Get current weather for a city."""</span>
+    <span class="comment"># API call implementation</span>
+    <span class="keyword">return</span> weather_data
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Resources Detail -->
+                <div id="resources-detail" class="concept-detail bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-8 border-2 border-blue-200">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                            <span class="text-white text-2xl">📄</span>
+                        </div>
+                        <h2 class="text-2xl font-bold">Resources: Data Providers</h2>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-gray-700 mb-4">Resources provide read-only access to data and content. They're the "knowledge base" that gives context to your AI assistant.</p>
+                            <div class="space-y-3">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-blue-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Static Resources:</strong> Fixed content like documentation</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-blue-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Dynamic Resources:</strong> Real-time data like logs</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-blue-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Subscriptions:</strong> Get notified of changes</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-blue-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>URI-based:</strong> Addressable via unique identifiers</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-block">
+<span class="comment"># FastMCP Resource Example</span>
+<span class="keyword">@mcp.resource</span>(<span class="string">"logs://application"</span>)
+<span class="keyword">def</span> <span class="function">get_app_logs</span>() -> <span class="keyword">str</span>:
+    <span class="string">"""Get application logs."""</span>
+    <span class="keyword">with</span> <span class="function">open</span>(<span class="string">"app.log"</span>) <span class="keyword">as</span> f:
+        <span class="keyword">return</span> f.read()
+
+<span class="keyword">@mcp.resource</span>(<span class="string">"customer://{{customer_id}}/logs"</span>)
+<span class="keyword">def</span> <span class="function">get_customer_logs</span>(customer_id: <span class="keyword">str</span>) -> <span class="keyword">str</span>:
+    <span class="string">"""Get logs for specific customer."""</span>
+    <span class="keyword">return</span> load_customer_logs(customer_id)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Prompts Detail -->
+                <div id="prompts-detail" class="concept-detail bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl p-8 border-2 border-purple-200">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center">
+                            <span class="text-white text-2xl">💬</span>
+                        </div>
+                        <h2 class="text-2xl font-bold">Prompts: Reusable Templates</h2>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-gray-700 mb-4">Prompts are reusable templates that help structure interactions with LLMs. They provide consistent, well-crafted instructions for specific tasks.</p>
+                            <div class="space-y-3">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Parameterized:</strong> Accept dynamic inputs</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Consistent:</strong> Standardized formatting</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Reusable:</strong> Share across applications</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Discoverable:</strong> Listed by servers</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-block">
+<span class="comment"># FastMCP Prompt Example</span>
+<span class="keyword">@mcp.prompt</span>(<span class="string">"analyze-issue"</span>)
+<span class="keyword">def</span> <span class="function">analyze_customer_issue</span>(
+    customer_id: <span class="keyword">str</span>,
+    issue_type: <span class="keyword">str</span> = <span class="string">"general"</span>
+) -> <span class="keyword">str</span>:
+    <span class="string">"""Generate analysis prompt for customer issues."""</span>
+    <span class="keyword">return</span> <span class="string">f"""
+Analyze the following customer issue:
+
+Customer ID: {customer_id}
+Issue Type: {issue_type}
+
+Please provide:
+1. Root cause analysis
+2. Recommended solutions
+3. Prevention strategies
+"""</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- FastMCP SDK Section -->
+        <section id="fastmcp" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">FastMCP SDK</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">A Python SDK that dramatically simplifies MCP server development with decorators and automatic schema inference</p>
+            </div>
+
+            <!-- FastMCP Benefits -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Why FastMCP?</h2>
+                <div class="grid md:grid-cols-2 gap-8 items-center">
+                    <div>
+                        <div class="space-y-6">
+                            <div class="flex items-start gap-4">
+                                <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
+                                    <span class="text-2xl">⚡</span>
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold text-lg mb-2">Rapid Development</h3>
+                                    <p class="text-gray-600">Build MCP servers in minutes, not hours. Decorators handle all the boilerplate.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4">
+                                <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
+                                    <span class="text-2xl">🔍</span>
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold text-lg mb-2">Automatic Schema Inference</h3>
+                                    <p class="text-gray-600">Type hints automatically generate JSON schemas for tools and prompts.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-4">
+                                <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                                    <span class="text-2xl">🛡️</span>
+                                </div>
+                                <div>
+                                    <h3 class="font-semibold text-lg mb-2">Type Safety</h3>
+                                    <p class="text-gray-600">Full Python type checking and validation built-in.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="chart-container">
+                        <canvas id="fastMcpChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Code Comparison -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Code Comparison: Raw MCP vs FastMCP</h2>
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <!-- Raw MCP -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4 text-red-600">Raw MCP Implementation</h3>
+                        <div class="code-block text-xs">
+<span class="comment"># Raw MCP - 50+ lines of boilerplate</span>
+<span class="keyword">import</span> asyncio
+<span class="keyword">from</span> mcp.server <span class="keyword">import</span> Server
+<span class="keyword">from</span> mcp.types <span class="keyword">import</span> Tool, TextContent
+
+server = Server(<span class="string">"calculator"</span>)
+
+<span class="keyword">@server.list_tools()</span>
+<span class="keyword">async def</span> <span class="function">list_tools</span>():
+    <span class="keyword">return</span> [
+        Tool(
+            name=<span class="string">"calculate_sum"</span>,
+            description=<span class="string">"Calculate sum of two numbers"</span>,
+            inputSchema={
+                <span class="string">"type"</span>: <span class="string">"object"</span>,
+                <span class="string">"properties"</span>: {
+                    <span class="string">"a"</span>: {<span class="string">"type"</span>: <span class="string">"number"</span>},
+                    <span class="string">"b"</span>: {<span class="string">"type"</span>: <span class="string">"number"</span>}
+                },
+                <span class="string">"required"</span>: [<span class="string">"a"</span>, <span class="string">"b"</span>]
+            }
+        )
+    ]
+
+<span class="keyword">@server.call_tool()</span>
+<span class="keyword">async def</span> <span class="function">call_tool</span>(name: <span class="keyword">str</span>, arguments: <span class="keyword">dict</span>):
+    <span class="keyword">if</span> name == <span class="string">"calculate_sum"</span>:
+        a = arguments[<span class="string">"a"</span>]
+        b = arguments[<span class="string">"b"</span>]
+        result = a + b
+        <span class="keyword">return</span> [TextContent(
+            type=<span class="string">"text"</span>,
+            text=<span class="string">f"Result: {result}"</span>
+        )]
+
+<span class="comment"># Transport setup, error handling, etc...</span>
+                        </div>
+                    </div>
+
+                    <!-- FastMCP -->
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4 text-green-600">FastMCP Implementation</h3>
+                        <div class="code-block text-xs">
+<span class="comment"># FastMCP - Just 8 lines!</span>
+<span class="keyword">from</span> mcp.server.fastmcp <span class="keyword">import</span> FastMCP
+
+mcp = FastMCP(<span class="string">"Calculator"</span>)
+
+<span class="keyword">@mcp.tool()</span>
+<span class="keyword">def</span> <span class="function">calculate_sum</span>(a: <span class="keyword">float</span>, b: <span class="keyword">float</span>) -> <span class="keyword">float</span>:
+    <span class="string">"""Calculate the sum of two numbers."""</span>
+    <span class="keyword">return</span> a + b
+
+<span class="keyword">if</span> __name__ == <span class="string">"__main__"</span>:
+    mcp.run()
+
+<span class="comment"># That's it! Schema, validation, transport - all handled automatically</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 p-6 bg-gradient-to-r from-green-50 to-blue-50 rounded-xl border border-green-200">
+                    <div class="text-center">
+                        <h3 class="text-2xl font-bold text-green-700 mb-2">85% Less Code</h3>
+                        <p class="text-gray-600">FastMCP reduces boilerplate by automatically handling schemas, validation, and transport configuration</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- FastMCP Features -->
+            <div class="feature-grid mb-12">
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🎯</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Decorator-Based</h3>
+                    <p class="text-gray-600">Simple @mcp.tool(), @mcp.resource(), and @mcp.prompt() decorators handle all the complexity.</p>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🔄</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Multiple Transports</h3>
+                    <p class="text-gray-600">Supports stdio, SSE, and Streamable HTTP with simple configuration changes.</p>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">📝</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Auto Documentation</h3>
+                    <p class="text-gray-600">Docstrings automatically become tool descriptions and help text.</p>
+                </div>
+            </div>
+
+            <!-- Getting Started with FastMCP -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Getting Started with FastMCP</h2>
+                <div class="space-y-6">
+                    <div class="flex items-start gap-4">
+                        <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">1</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold mb-2">Install FastMCP</h3>
+                            <div class="code-block">pip install fastmcp</div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-4">
+                        <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">2</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold mb-2">Create Your Server</h3>
+                            <div class="code-block">
+<span class="keyword">from</span> mcp.server.fastmcp <span class="keyword">import</span> FastMCP
+
+mcp = FastMCP(<span class="string">"MyServer"</span>)
+
+<span class="keyword">@mcp.tool()</span>
+<span class="keyword">def</span> <span class="function">my_tool</span>(param: <span class="keyword">str</span>) -> <span class="keyword">str</span>:
+    <span class="string">"""My first MCP tool."""</span>
+    <span class="keyword">return</span> <span class="string">f"Hello, {param}!"</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="flex items-start gap-4">
+                        <div class="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold">3</div>
+                        <div class="flex-1">
+                            <h3 class="font-semibold mb-2">Run Your Server</h3>
+                            <div class="code-block">
+<span class="keyword">if</span> __name__ == <span class="string">"__main__"</span>:
+    mcp.run(transport=<span class="string">"streamable-http"</span>, port=<span class="number">8001</span>)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Implementation Section -->
+        <section id="implementation" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Implementation Guide</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Practical examples and best practices for building production-ready MCP servers</p>
+            </div>
+
+            <!-- Real-World Example -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6">Real-World Example: Customer Support Server</h2>
+                <p class="text-gray-600 mb-6">This example demonstrates a complete MCP server for customer support operations with tools, resources, and prompts.</p>
+
+                <div class="grid lg:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Server Implementation</h3>
+                        <div class="code-block text-sm">
+<span class="keyword">from</span> mcp.server.fastmcp <span class="keyword">import</span> FastMCP
+<span class="keyword">import</span> sqlite3
+
+mcp = FastMCP(<span class="string">"CustomerSupport"</span>)
+
+<span class="comment"># Tool: Get support tickets</span>
+<span class="keyword">@mcp.tool()</span>
+<span class="keyword">def</span> <span class="function">get_support_tickets</span>(
+    customer_id: <span class="keyword">str</span>,
+    status: <span class="keyword">str</span> = <span class="string">"open"</span>
+) -> <span class="keyword">list</span>:
+    <span class="string">"""Get support tickets for customer."""</span>
+    conn = sqlite3.connect(<span class="string">"support.db"</span>)
+    cursor = conn.execute(
+        <span class="string">"SELECT * FROM tickets WHERE customer_id=? AND status=?"</span>,
+        (customer_id, status)
+    )
+    <span class="keyword">return</span> cursor.fetchall()
+
+<span class="comment"># Resource: Application logs</span>
+<span class="keyword">@mcp.resource</span>(<span class="string">"logs://application"</span>)
+<span class="keyword">def</span> <span class="function">get_app_logs</span>() -> <span class="keyword">str</span>:
+    <span class="string">"""Get application logs."""</span>
+    <span class="keyword">with</span> <span class="function">open</span>(<span class="string">"app.log"</span>) <span class="keyword">as</span> f:
+        <span class="keyword">return</span> f.read()
+
+<span class="comment"># Prompt: Issue analysis</span>
+<span class="keyword">@mcp.prompt</span>(<span class="string">"analyze-issue"</span>)
+<span class="keyword">def</span> <span class="function">analyze_issue</span>(
+    customer_id: <span class="keyword">str</span>,
+    issue_description: <span class="keyword">str</span>
+) -> <span class="keyword">str</span>:
+    <span class="string">"""Generate issue analysis prompt."""</span>
+    <span class="keyword">return</span> <span class="string">f"""
+Analyze this customer issue:
+
+Customer: {customer_id}
+Issue: {issue_description}
+
+Provide:
+1. Root cause analysis
+2. Solution steps
+3. Prevention measures
+"""</span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Client Usage</h3>
+                        <div class="code-block text-sm">
+<span class="comment"># Connect to MCP server</span>
+client = SimpleMCPClient()
+<span class="keyword">await</span> client.connect_to_remote_server(
+    <span class="string">"http://localhost:8001/mcp"</span>
+)
+
+<span class="comment"># Use tools via natural language</span>
+response = <span class="keyword">await</span> client.process_query(
+    <span class="string">"Get all open tickets for customer CUST001"</span>
+)
+
+<span class="comment"># Access resources directly</span>
+logs = <span class="keyword">await</span> client.get_resource(
+    <span class="string">"logs://application"</span>
+)
+
+<span class="comment"># Use prompts with parameters</span>
+analysis_prompt = <span class="keyword">await</span> client.get_prompt(
+    <span class="string">"analyze-issue"</span>,
+    customer_id=<span class="string">"CUST001"</span>,
+    issue_description=<span class="string">"Login failures"</span>
+)
+
+<span class="comment"># Run prompt with Claude</span>
+<span class="keyword">await</span> client.run_prompt_with_claude(
+    analysis_prompt
+)
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Testing Your Server -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6">Testing Your MCP Server</h2>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">MCP Inspector</h3>
+                        <p class="text-gray-600 mb-4">The official UI tool for testing MCP servers. Connect directly to your server and test all capabilities.</p>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">✓</span>
+                                <span>List and test tools</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">✓</span>
+                                <span>Browse resources</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">✓</span>
+                                <span>Test prompts</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">✓</span>
+                                <span>Debug communication</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Command Line Testing</h3>
+                        <div class="code-block text-sm">
+<span class="comment"># Install MCP CLI</span>
+pip install mcp
+
+<span class="comment"># Test stdio transport</span>
+mcp run main.py
+
+<span class="comment"># Test HTTP transport</span>
+curl -X POST http://localhost:8001/mcp \
+  -H <span class="string">"Content-Type: application/json"</span> \
+  -d <span class="string">'{"jsonrpc":"2.0","id":1,"method":"tools/list"}'</span>
+
+<span class="comment"># Use with Claude Desktop</span>
+<span class="comment"># Add to claude_desktop_config.json:</span>
+{
+  <span class="property">"mcpServers"</span>: {
+    <span class="property">"my-server"</span>: {
+      <span class="property">"command"</span>: <span class="string">"python"</span>,
+      <span class="property">"args"</span>: [<span class="string">"main.py"</span>]
+    }
+  }
+}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Best Practices -->
+            <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl p-8 border-2 border-blue-200 mb-12">
+                <h2 class="text-2xl font-bold mb-6">Best Practices</h2>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">🔧 Tool Design</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Keep tools focused and single-purpose</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Use clear, descriptive names and docstrings</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Validate inputs and handle errors gracefully</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Return structured data when possible</span>
+                            </li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">📄 Resource Management</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Use meaningful URI schemes</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Implement caching for expensive operations</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Support subscriptions for dynamic content</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Handle large resources efficiently</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Ecosystem Section -->
+        <section id="ecosystem" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">MCP Ecosystem</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Discover the growing ecosystem of MCP servers, clients, and tools</p>
+            </div>
+
+            <!-- Popular MCP Servers -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Popular MCP Servers</h2>
+                <div class="feature-grid">
+                    <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6 border-2 border-blue-200 card-hover">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                                <span class="text-white text-lg">📚</span>
+                            </div>
+                            <h3 class="text-lg font-semibold">Context7 MCP</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Up-to-date documentation and code examples directly from source repositories.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Documentation</span>
+                            <span class="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs">Code Examples</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border-2 border-green-200 card-hover">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-green-500 rounded-lg flex items-center justify-center">
+                                <span class="text-white text-lg">🌐</span>
+                            </div>
+                            <h3 class="text-lg font-semibold">Playwright MCP</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Browser automation capabilities using Playwright for web interaction.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Web Automation</span>
+                            <span class="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">Testing</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border-2 border-purple-200 card-hover">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-purple-500 rounded-lg flex items-center justify-center">
+                                <span class="text-white text-lg">🗄️</span>
+                            </div>
+                            <h3 class="text-lg font-semibold">Database MCP</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Connect to PostgreSQL, MySQL, and other databases with query capabilities.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">SQL</span>
+                            <span class="px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs">Database</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-6 border-2 border-orange-200 card-hover">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-orange-500 rounded-lg flex items-center justify-center">
+                                <span class="text-white text-lg">📁</span>
+                            </div>
+                            <h3 class="text-lg font-semibold">File System MCP</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Safe file system operations with read/write capabilities and security controls.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">Files</span>
+                            <span class="px-2 py-1 bg-orange-100 text-orange-700 rounded text-xs">Security</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-6 border-2 border-indigo-200 card-hover">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-indigo-500 rounded-lg flex items-center justify-center">
+                                <span class="text-white text-lg">🔍</span>
+                            </div>
+                            <h3 class="text-lg font-semibold">Search MCP</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Web search capabilities through various search engines and APIs.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">Search</span>
+                            <span class="px-2 py-1 bg-indigo-100 text-indigo-700 rounded text-xs">Web</span>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-6 border-2 border-teal-200 card-hover">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-10 h-10 bg-teal-500 rounded-lg flex items-center justify-center">
+                                <span class="text-white text-lg">💰</span>
+                            </div>
+                            <h3 class="text-lg font-semibold">Crypto MCP</h3>
+                        </div>
+                        <p class="text-gray-600 text-sm mb-4">Blockchain interactions, wallet management, and DeFi operations.</p>
+                        <div class="flex flex-wrap gap-2">
+                            <span class="px-2 py-1 bg-teal-100 text-teal-700 rounded text-xs">Blockchain</span>
+                            <span class="px-2 py-1 bg-teal-100 text-teal-700 rounded text-xs">DeFi</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MCP Clients -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">MCP-Compatible Clients</h2>
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200">
+                        <div class="w-12 h-12 bg-blue-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">C</span>
+                        </div>
+                        <h3 class="font-semibold">Claude Desktop</h3>
+                        <p class="text-xs text-gray-600 mt-1">Official Anthropic client</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border border-purple-200">
+                        <div class="w-12 h-12 bg-purple-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">VS</span>
+                        </div>
+                        <h3 class="font-semibold">VS Code</h3>
+                        <p class="text-xs text-gray-600 mt-1">With MCP extensions</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-200">
+                        <div class="w-12 h-12 bg-green-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">C</span>
+                        </div>
+                        <h3 class="font-semibold">Cursor</h3>
+                        <p class="text-xs text-gray-600 mt-1">AI-powered editor</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-xl border border-orange-200">
+                        <div class="w-12 h-12 bg-orange-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">W</span>
+                        </div>
+                        <h3 class="font-semibold">Windsurf</h3>
+                        <p class="text-xs text-gray-600 mt-1">Codeium's AI editor</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Getting Involved -->
+            <div class="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-8 border-2 border-indigo-200 mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Get Involved</h2>
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="text-center">
+                        <div class="w-16 h-16 bg-indigo-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-2xl">🛠️</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-2">Build a Server</h3>
+                        <p class="text-gray-600 text-sm">Create your own MCP server using FastMCP or the raw SDK.</p>
+                    </div>
+
+                    <div class="text-center">
+                        <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-2xl">🤝</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-2">Contribute</h3>
+                        <p class="text-gray-600 text-sm">Contribute to existing servers or help improve the protocol.</p>
+                    </div>
+
+                    <div class="text-center">
+                        <div class="w-16 h-16 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-2xl">📖</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-2">Share Knowledge</h3>
+                        <p class="text-gray-600 text-sm">Write tutorials, create examples, and help others learn MCP.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resources -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg">
+                <h2 class="text-2xl font-bold mb-6 text-center">Additional Resources</h2>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">📚 Documentation</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="https://modelcontextprotocol.io" class="text-blue-600 hover:underline">Official MCP Specification</a></li>
+                            <li><a href="https://github.com/modelcontextprotocol" class="text-blue-600 hover:underline">MCP GitHub Organization</a></li>
+                            <li><a href="https://docs.fastmcp.com" class="text-blue-600 hover:underline">FastMCP Documentation</a></li>
+                        </ul>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">🛠️ Tools</h3>
+                        <ul class="space-y-2 text-sm">
+                            <li><a href="#" class="text-blue-600 hover:underline">MCP Inspector (Testing Tool)</a></li>
+                            <li><a href="#" class="text-blue-600 hover:underline">MCP Server Registry</a></li>
+                            <li><a href="#" class="text-blue-600 hover:underline">Community Examples</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- JavaScript -->
+    <script>
+        // Navigation functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sections = document.querySelectorAll('.content-section');
+            const mobileNav = document.getElementById('mobile-nav');
+
+            function showSection(sectionId) {
+                // Hide all sections
+                sections.forEach(section => {
+                    section.classList.remove('active');
+                });
+
+                // Show target section
+                const targetSection = document.getElementById(sectionId);
+                if (targetSection) {
+                    targetSection.classList.add('active');
+                }
+
+                // Update nav links
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                });
+
+                const activeLink = document.querySelector(`[data-section="${sectionId}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('active');
+                }
+
+                // Update mobile nav
+                if (mobileNav) {
+                    mobileNav.value = sectionId;
+                }
+            }
+
+            // Desktop navigation
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const sectionId = this.getAttribute('data-section');
+                    showSection(sectionId);
+                });
+            });
+
+            // Mobile navigation
+            if (mobileNav) {
+                mobileNav.addEventListener('change', function() {
+                    showSection(this.value);
+                });
+            }
+
+            // Interactive diagram functionality
+            const diagramItems = document.querySelectorAll('.interactive-diagram-item');
+            const conceptDetails = document.querySelectorAll('.concept-detail');
+
+            diagramItems.forEach(item => {
+                item.addEventListener('click', function() {
+                    const itemId = this.id;
+                    const detailId = itemId.replace('-card', '-detail');
+
+                    // Remove active class from all items
+                    diagramItems.forEach(i => i.classList.remove('active'));
+
+                    // Add active class to clicked item
+                    this.classList.add('active');
+
+                    // Hide all details
+                    conceptDetails.forEach(detail => {
+                        detail.style.display = 'none';
+                    });
+
+                    // Show corresponding detail
+                    const targetDetail = document.getElementById(detailId);
+                    if (targetDetail) {
+                        targetDetail.style.display = 'block';
+                        targetDetail.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+                    }
+                });
+            });
+
+            // Initialize first diagram item as active
+            if (diagramItems.length > 0) {
+                diagramItems[0].click();
+            }
+
+            // Chart initialization
+            initializeCharts();
+        });
+
+        // Chart functionality
+        function initializeCharts() {
+            const chartCanvas = document.getElementById('fastMcpChart');
+            if (chartCanvas) {
+                const ctx = chartCanvas.getContext('2d');
+                new Chart(ctx, {
+                    type: 'bar',
+                    data: {
+                        labels: ['Raw MCP', 'FastMCP'],
+                        datasets: [{
+                            label: 'Lines of Code',
+                            data: [50, 8],
+                            backgroundColor: [
+                                'rgba(239, 68, 68, 0.8)',
+                                'rgba(16, 185, 129, 0.8)'
+                            ],
+                            borderColor: [
+                                'rgba(239, 68, 68, 1)',
+                                'rgba(16, 185, 129, 1)'
+                            ],
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            title: {
+                                display: true,
+                                text: 'Code Reduction with FastMCP',
+                                font: {
+                                    size: 16,
+                                    weight: 'bold'
+                                }
+                            },
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: 'Lines of Code'
+                                }
+                            },
+                            x: {
+                                title: {
+                                    display: true,
+                                    text: 'Implementation Method'
+                                }
+                            }
+                        },
+                        animation: {
+                            duration: 2000,
+                            easing: 'easeInOutQuart'
+                        }
+                    }
+                });
+            }
+        }
+
+        // Add copy functionality to code blocks
+        document.querySelectorAll('.code-block').forEach(block => {
+            const copyButton = document.createElement('button');
+            copyButton.innerHTML = '📋';
+            copyButton.className = 'absolute top-2 right-2 bg-gray-700 hover:bg-gray-600 text-white px-2 py-1 rounded text-xs opacity-0 transition-opacity';
+            copyButton.title = 'Copy code';
+
+            block.style.position = 'relative';
+            block.appendChild(copyButton);
+
+            block.addEventListener('mouseenter', () => {
+                copyButton.style.opacity = '1';
+            });
+
+            block.addEventListener('mouseleave', () => {
+                copyButton.style.opacity = '0';
+            });
+
+            copyButton.addEventListener('click', async () => {
+                const text = block.textContent;
+                try {
+                    await navigator.clipboard.writeText(text);
+                    copyButton.innerHTML = '✅';
+                    setTimeout(() => {
+                        copyButton.innerHTML = '📋';
+                    }, 2000);
+                } catch (err) {
+                    console.error('Failed to copy text: ', err);
+                }
+            });
+        });
+
+        // Add intersection observer for animations
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '1';
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        }, observerOptions);
+
+        // Observe elements for animation
+        document.querySelectorAll('.card-hover, .transport-card, .lifecycle-step').forEach(el => {
+            el.style.opacity = '0';
+            el.style.transform = 'translateY(20px)';
+            el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>

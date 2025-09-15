@@ -1,0 +1,17 @@
+# Placeholder for favicon.ico
+# This should be a 32x32 pixel ICO file of your app icon
+# Used as the browser tab icon and bookmark icon
+#
+# To create this file:
+# 1. Design your app icon (square format, simple design works best at small sizes)
+# 2. Convert to ICO format at 32x32 pixels (or include multiple sizes: 16x16, 32x32, 48x48)
+# 3. Replace this text file with your actual favicon.ico
+#
+# Recommended tools:
+# - https://favicon.io/ (free online generator)
+# - https://realfavicongenerator.net/ (comprehensive favicon generator)
+# - https://www.favicon-generator.org/
+#
+# You can use the icon.svg as a base for conversion
+#
+# Note: This text file is temporary - browsers expect a binary ICO file here

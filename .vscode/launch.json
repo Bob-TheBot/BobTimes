@@ -1,0 +1,67 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Python Debugger: Current File",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Backend",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": [
+                "app.main:app",
+                "--host",
+                "0.0.0.0",
+                "--port",
+                "9200",
+                "--reload"
+            ],
+            "cwd": "${workspaceFolder}/backend",
+            "console": "integratedTerminal",
+            "presentation": {
+                "hidden": false,
+                "group": "servers",
+                "order": 1
+            }
+        },
+        {
+            "name": "Client",
+            "type": "chrome",
+            "request": "launch",
+            "url": "http://localhost:51273",
+            "webRoot": "${workspaceFolder}/client/src",
+            "preLaunchTask": "Start Vite Dev Server",
+            "presentation": {
+                "hidden": false,
+                "group": "servers",
+                "order": 2
+            }
+        }
+,
+        {
+            "name": "Generate Newspaper (single topic)",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/generate_newpaper.py",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "env": {
+                "APP_ENV": "development"
+            }
+        }
+    ],
+    "compounds": [
+        {
+            "name": "Run Both",
+            "configurations": [
+                "Backend",
+                "Client"
+            ]
+        }
+    ]
+}

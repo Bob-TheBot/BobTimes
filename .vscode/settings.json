@@ -1,0 +1,19 @@
+{
+    // Terminal settings for better just command integration
+    "terminal.integrated.cwd": "${workspaceFolder}",
+
+    // File associations
+    "files.associations": {
+        "justfile": "makefile",
+        "Justfile": "makefile"
+    },
+
+    // Playwright extension configuration
+    "playwright.testDir": "./client/tests/integration",
+    "playwright.configFile": "./client/playwright.config.ts",
+    "playwright.workingDir": "./client",
+    "cSpell.words": [
+        "FAISS",
+        "retriable"
+    ]
+}

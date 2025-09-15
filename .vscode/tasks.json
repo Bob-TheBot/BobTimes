@@ -1,0 +1,39 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Start Vite Dev Server",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/client && npm run dev",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "custom",
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*VITE.*",
+                    "endsPattern": ".*ready in.*"
+                }
+            }
+        },
+        {
+            "label": "Start Backend Server",
+            "type": "shell",
+            "command": "cd ${workspaceFolder}/backend && uvicorn app.main:app --host 0.0.0.0 --port 9000 --reload",
+            "isBackground": true,
+            "problemMatcher": {
+                "owner": "custom",
+                "pattern": {
+                    "regexp": "^$"
+                },
+                "background": {
+                    "activeOnStart": true,
+                    "beginsPattern": ".*INFO.*",
+                    "endsPattern": ".*Application startup complete.*"
+                }
+            }
+        }
+    ]
+}

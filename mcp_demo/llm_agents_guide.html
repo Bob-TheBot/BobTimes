@@ -1,0 +1,2543 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Agents: Comprehensive Study Guide</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary-purple: #8b5cf6;
+            --secondary-purple: #7c3aed;
+            --accent-blue: #3b82f6;
+            --accent-green: #10b981;
+            --accent-orange: #f59e0b;
+            --accent-red: #ef4444;
+            --neutral-50: #f8fafc;
+            --neutral-100: #f1f5f9;
+            --neutral-200: #e2e8f0;
+            --neutral-300: #cbd5e1;
+            --neutral-600: #475569;
+            --neutral-700: #334155;
+            --neutral-800: #1e293b;
+            --neutral-900: #0f172a;
+        }
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, var(--neutral-50) 0%, var(--neutral-100) 100%);
+            color: var(--neutral-700);
+            line-height: 1.6;
+        }
+        
+        .hero-gradient {
+            background: linear-gradient(135deg, var(--primary-purple) 0%, var(--secondary-purple) 50%, #6366f1 100%);
+        }
+        
+        .card-hover {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        .card-hover:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .component-card {
+            border: 2px solid var(--neutral-200);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+        .component-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--primary-purple), var(--accent-blue));
+            transform: scaleX(0);
+            transition: transform 0.3s ease;
+        }
+        .component-card:hover::before {
+            transform: scaleX(1);
+        }
+        .component-card:hover {
+            border-color: var(--primary-purple);
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .nav-link {
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0;
+            height: 2px;
+            background: var(--primary-purple);
+            transition: width 0.3s ease;
+        }
+        .nav-link:hover::after,
+        .nav-link.active::after {
+            width: 100%;
+        }
+        
+        .content-section {
+            display: none;
+            animation: fadeIn 0.5s ease-in-out;
+        }
+        .content-section.active {
+            display: block;
+        }
+        
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        
+        .quiz-card {
+            background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+            border: 2px solid var(--accent-orange);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            position: relative;
+        }
+        .quiz-card::before {
+            content: '🧠';
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            font-size: 1.5rem;
+            opacity: 0.3;
+        }
+        
+        .glossary-term {
+            background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+            border-left: 4px solid var(--accent-blue);
+            padding: 1rem;
+            margin: 0.5rem 0;
+            border-radius: 0 8px 8px 0;
+        }
+        
+        .agent-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+            margin: 2rem 0;
+        }
+        
+        .flow-step {
+            background: white;
+            border: 2px solid var(--neutral-200);
+            border-radius: 12px;
+            padding: 1rem;
+            text-align: center;
+            min-width: 120px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .flow-step:hover {
+            border-color: var(--primary-purple);
+            transform: scale(1.05);
+        }
+        .flow-step::after {
+            content: '→';
+            position: absolute;
+            top: 50%;
+            right: -20px;
+            transform: translateY(-50%);
+            font-size: 1.5rem;
+            color: var(--primary-purple);
+            font-weight: bold;
+        }
+        .flow-step:last-child::after {
+            display: none;
+        }
+        
+        .progress-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            display: inline-block;
+            margin-right: 0.5rem;
+        }
+        .progress-indicator.beginner { background: var(--accent-green); }
+        .progress-indicator.intermediate { background: var(--accent-orange); }
+        .progress-indicator.advanced { background: var(--accent-red); }
+        
+        .code-block {
+            background: var(--neutral-900);
+            color: #e2e8f0;
+            border-radius: 12px;
+            padding: 1.5rem;
+            overflow-x: auto;
+            font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+            font-size: 0.875rem;
+            line-height: 1.8;
+            border: 1px solid var(--neutral-700);
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+            white-space: pre;
+            word-wrap: normal;
+            tab-size: 4;
+        }
+        
+        .syntax-highlight .keyword { color: #f59e0b; font-weight: 600; }
+        .syntax-highlight .string { color: #10b981; }
+        .syntax-highlight .comment { color: #6b7280; font-style: italic; }
+        .syntax-highlight .function { color: #3b82f6; font-weight: 500; }
+        .syntax-highlight .property { color: #8b5cf6; }
+        .syntax-highlight .number { color: #f97316; }
+
+        /* Improved code formatting */
+        .code-block pre {
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            border: none;
+            font-family: inherit;
+            font-size: inherit;
+            line-height: inherit;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .code-block code {
+            background: transparent;
+            padding: 0;
+            border: none;
+            font-family: inherit;
+            font-size: inherit;
+            color: inherit;
+            white-space: pre;
+            display: block;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 2rem;
+        }
+        
+        .section-divider {
+            height: 2px;
+            background: linear-gradient(90deg, transparent, var(--primary-purple), transparent);
+            margin: 4rem 0;
+        }
+        
+        .tooltip {
+            position: relative;
+            cursor: help;
+        }
+        .tooltip::after {
+            content: attr(data-tooltip);
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: var(--neutral-900);
+            color: white;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.75rem;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 1000;
+        }
+        .tooltip:hover::after {
+            opacity: 1;
+        }
+        
+        .interactive-element {
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .interactive-element:hover {
+            transform: scale(1.02);
+        }
+        
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+        .badge.new { background: #dcfce7; color: #166534; }
+        .badge.popular { background: #fef3c7; color: #92400e; }
+        .badge.advanced { background: #fce7f3; color: #be185d; }
+        
+        @media (max-width: 768px) {
+            .agent-flow {
+                flex-direction: column;
+            }
+            .flow-step::after {
+                content: '↓';
+                top: auto;
+                bottom: -20px;
+                right: 50%;
+                transform: translateX(50%);
+            }
+        }
+    </style>
+</head>
+<body class="antialiased">
+    <!-- Navigation -->
+    <nav class="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-gray-200">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center">
+                        <div class="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg mr-3 flex items-center justify-center">
+                            <span class="text-white text-lg font-bold">🤖</span>
+                        </div>
+                        <h1 class="text-xl font-bold text-gray-900">LLM Agents Study Guide</h1>
+                    </div>
+                </div>
+                <div class="hidden md:flex items-center space-x-8">
+                    <a href="#" data-section="intro" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600 active">Introduction</a>
+                    <a href="#" data-section="components" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600">Components</a>
+                    <a href="#" data-section="applications" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600">Applications</a>
+                    <a href="#" data-section="frameworks" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600">Frameworks</a>
+                    <a href="#" data-section="evaluation" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600">Evaluation</a>
+                    <a href="#" data-section="quiz" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600">Quiz</a>
+                    <a href="#" data-section="glossary" class="nav-link px-3 py-2 text-sm font-medium text-gray-700 hover:text-purple-600">Glossary</a>
+                </div>
+                <div class="md:hidden">
+                    <select id="mobile-nav" class="bg-white border border-gray-300 rounded-md py-2 px-3 text-sm">
+                        <option value="intro">Introduction</option>
+                        <option value="components">Components</option>
+                        <option value="applications">Applications</option>
+                        <option value="frameworks">Frameworks</option>
+                        <option value="evaluation">Evaluation</option>
+                        <option value="quiz">Quiz</option>
+                        <option value="glossary">Glossary</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+        <!-- Introduction Section -->
+        <section id="intro" class="content-section active">
+            <!-- Hero Section -->
+            <div class="hero-gradient text-white rounded-2xl p-12 mb-12 relative overflow-hidden">
+                <div class="absolute inset-0 bg-black/10"></div>
+                <div class="relative z-10">
+                    <div class="max-w-4xl mx-auto text-center">
+                        <div class="flex justify-center mb-6">
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-6 py-3 flex items-center gap-3">
+                                <span class="text-2xl">🤖</span>
+                                <span class="font-semibold">Advanced AI Systems</span>
+                            </div>
+                        </div>
+                        <h1 class="text-5xl font-bold mb-6">LLM Agents</h1>
+                        <p class="text-xl mb-8 opacity-90">Complete Study Guide for Building Intelligent AI Systems</p>
+                        <div class="flex flex-wrap justify-center gap-4 text-sm">
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">🧠 Reasoning & Planning</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">🔧 Tool Integration</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">💾 Memory Systems</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">🎯 Goal-Oriented</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">🤝 Multi-Agent Collaboration</div>
+                            <div class="bg-white/20 backdrop-blur-sm rounded-full px-4 py-2">⚡ Production Ready</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- What are LLM Agents -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-3xl font-bold mb-6 text-center">What are LLM Agents?</h2>
+                <div class="grid md:grid-cols-2 gap-8 items-center">
+                    <div>
+                        <p class="text-lg mb-6">LLM Agents are sophisticated AI systems that use Large Language Models as a "brain" or "coordinator" to solve complex tasks through reasoning, planning, memory, and tool usage. Unlike traditional LLMs that simply generate text, agents can autonomously break down problems, execute multi-step plans, and interact with external systems.</p>
+
+                        <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg mb-6">
+                            <h4 class="font-semibold text-blue-800 mb-2">🎯 Key Definition</h4>
+                            <p class="text-sm text-blue-700">An agent is a system that uses an LLM to determine the control flow of an application, making decisions about what actions to take next based on the current state and goals.</p>
+                        </div>
+
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-purple-600 text-sm">✓</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Beyond Simple LLMs</h4>
+                                    <p class="text-gray-600 text-sm">Go beyond text generation to autonomous problem-solving with decision-making capabilities</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-purple-600 text-sm">✓</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">More Than RAG</h4>
+                                    <p class="text-gray-600 text-sm">Complex reasoning, multi-step planning, and dynamic tool selection</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-purple-600 text-sm">✓</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Autonomous Execution</h4>
+                                    <p class="text-gray-600 text-sm">Can execute plans, interact with APIs, and adapt based on feedback</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <div class="w-6 h-6 bg-purple-100 rounded-full flex items-center justify-center mt-1">
+                                    <span class="text-purple-600 text-sm">✓</span>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold">Collaborative Intelligence</h4>
+                                    <p class="text-gray-600 text-sm">Can work with other agents, delegate tasks, and coordinate complex workflows</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-gradient-to-br from-purple-50 to-blue-50 rounded-xl p-6">
+                        <h3 class="font-bold text-lg mb-4 text-center">Agent vs Traditional LLM</h3>
+                        <div class="space-y-4">
+                            <div class="bg-white rounded-lg p-4 border-2 border-red-200">
+                                <h4 class="font-semibold text-red-700 mb-2">Traditional LLM</h4>
+                                <ul class="text-sm text-gray-600 space-y-1">
+                                    <li>• Single-turn responses</li>
+                                    <li>• No external tool access</li>
+                                    <li>• Limited context memory</li>
+                                    <li>• Reactive only</li>
+                                    <li>• Stateless interactions</li>
+                                </ul>
+                            </div>
+                            <div class="bg-white rounded-lg p-4 border-2 border-green-200">
+                                <h4 class="font-semibold text-green-700 mb-2">LLM Agent</h4>
+                                <ul class="text-sm text-gray-600 space-y-1">
+                                    <li>• Multi-step reasoning</li>
+                                    <li>• Tool integration & API calls</li>
+                                    <li>• Persistent memory systems</li>
+                                    <li>• Proactive planning</li>
+                                    <li>• Stateful conversations</li>
+                                    <li>• Multi-agent collaboration</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Real-World Examples -->
+            <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-8 border-2 border-green-200 mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Real-World Agent Examples</h2>
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="bg-white rounded-xl p-6 border border-green-200">
+                        <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                            <span class="text-2xl">🧪</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-3">ChemCrow</h3>
+                        <p class="text-sm text-gray-600 mb-3">Specialized chemistry agent that can plan molecular synthesis, analyze chemical structures, and predict reaction outcomes.</p>
+                        <div class="text-xs text-green-600 font-medium">Research & Scientific Discovery</div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 border border-green-200">
+                        <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                            <span class="text-2xl">💻</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-3">ChatDev</h3>
+                        <p class="text-sm text-gray-600 mb-3">Multi-agent software engineering team where agents take roles like CEO, CTO, programmer, and tester to build applications.</p>
+                        <div class="text-xs text-blue-600 font-medium">Software Development</div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 border border-green-200">
+                        <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                            <span class="text-2xl">🏥</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-3">Healthcare Agents</h3>
+                        <p class="text-sm text-gray-600 mb-3">Agents that can analyze medical data, assist in diagnosis, and coordinate patient care across multiple specialists.</p>
+                        <div class="text-xs text-purple-600 font-medium">Healthcare & Medicine</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Industry Impact -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Industry Impact & Current Trends</h2>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4 text-blue-600">🚀 Market Growth</h3>
+                        <ul class="space-y-3 text-sm text-gray-700">
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>AI agent market projected to reach $47B by 2030</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>85% of enterprises plan to deploy agents by 2025</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <span>Average 40% productivity increase in early adopters</span>
+                            </li>
+                        </ul>
+
+                        <h3 class="text-lg font-semibold mb-4 mt-6 text-green-600">🏢 Enterprise Adoption</h3>
+                        <ul class="space-y-3 text-sm text-gray-700">
+                            <li class="flex items-start gap-2">
+                                <span class="text-green-500 mt-1">•</span>
+                                <span>Customer service automation (80% of inquiries)</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-green-500 mt-1">•</span>
+                                <span>Financial analysis and trading decisions</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-green-500 mt-1">•</span>
+                                <span>Supply chain optimization and logistics</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4 text-purple-600">🔬 Research Frontiers</h3>
+                        <ul class="space-y-3 text-sm text-gray-700">
+                            <li class="flex items-start gap-2">
+                                <span class="text-purple-500 mt-1">•</span>
+                                <span>Multi-modal agents (text, vision, audio, video)</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-purple-500 mt-1">•</span>
+                                <span>Swarm intelligence and emergent behaviors</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-purple-500 mt-1">•</span>
+                                <span>Self-improving agents with meta-learning</span>
+                            </li>
+                        </ul>
+
+                        <h3 class="text-lg font-semibold mb-4 mt-6 text-orange-600">⚡ Technical Advances</h3>
+                        <ul class="space-y-3 text-sm text-gray-700">
+                            <li class="flex items-start gap-2">
+                                <span class="text-orange-500 mt-1">•</span>
+                                <span>Function calling and tool use improvements</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-orange-500 mt-1">•</span>
+                                <span>Better long-term memory and context handling</span>
+                            </li>
+                            <li class="flex items-start gap-2">
+                                <span class="text-orange-500 mt-1">•</span>
+                                <span>Improved reasoning and planning capabilities</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Key Capabilities -->
+            <div class="feature-grid mb-12">
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🧠</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Reasoning</h3>
+                    <p class="text-gray-600">Advanced logical thinking and problem decomposition capabilities for complex scenarios.</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">📋</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Planning</h3>
+                    <p class="text-gray-600">Strategic task breakdown and execution planning with feedback loops and adaptation.</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">💾</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Memory</h3>
+                    <p class="text-gray-600">Both short-term and long-term memory systems for context and learning retention.</p>
+                </div>
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🔧</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Tool Usage</h3>
+                    <p class="text-gray-600">Integration with external APIs, databases, and specialized tools for enhanced capabilities.</p>
+                </div>
+            </div>
+
+            <!-- Agent Architecture Flow -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">LLM Agent Architecture Flow</h2>
+                <div class="agent-flow">
+                    <div class="flow-step">
+                        <div class="w-12 h-12 bg-purple-100 rounded-full mx-auto mb-2 flex items-center justify-center">
+                            <span class="text-2xl">📥</span>
+                        </div>
+                        <h4 class="font-semibold text-sm">Input</h4>
+                        <p class="text-xs text-gray-600">User Query</p>
+                    </div>
+                    <div class="flow-step">
+                        <div class="w-12 h-12 bg-blue-100 rounded-full mx-auto mb-2 flex items-center justify-center">
+                            <span class="text-2xl">🧠</span>
+                        </div>
+                        <h4 class="font-semibold text-sm">Agent Core</h4>
+                        <p class="text-xs text-gray-600">Reasoning</p>
+                    </div>
+                    <div class="flow-step">
+                        <div class="w-12 h-12 bg-green-100 rounded-full mx-auto mb-2 flex items-center justify-center">
+                            <span class="text-2xl">📋</span>
+                        </div>
+                        <h4 class="font-semibold text-sm">Planning</h4>
+                        <p class="text-xs text-gray-600">Task Breakdown</p>
+                    </div>
+                    <div class="flow-step">
+                        <div class="w-12 h-12 bg-orange-100 rounded-full mx-auto mb-2 flex items-center justify-center">
+                            <span class="text-2xl">🔧</span>
+                        </div>
+                        <h4 class="font-semibold text-sm">Tools</h4>
+                        <p class="text-xs text-gray-600">Execution</p>
+                    </div>
+                    <div class="flow-step">
+                        <div class="w-12 h-12 bg-red-100 rounded-full mx-auto mb-2 flex items-center justify-center">
+                            <span class="text-2xl">💾</span>
+                        </div>
+                        <h4 class="font-semibold text-sm">Memory</h4>
+                        <p class="text-xs text-gray-600">Learning</p>
+                    </div>
+                    <div class="flow-step">
+                        <div class="w-12 h-12 bg-indigo-100 rounded-full mx-auto mb-2 flex items-center justify-center">
+                            <span class="text-2xl">📤</span>
+                        </div>
+                        <h4 class="font-semibold text-sm">Output</h4>
+                        <p class="text-xs text-gray-600">Response</p>
+                    </div>
+                </div>
+            </div>
+
+
+        </section>
+
+        <!-- Components Section -->
+        <section id="components" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Core Components of LLM Agents</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Understanding the four fundamental building blocks that make LLM agents intelligent and autonomous</p>
+            </div>
+
+            <!-- Interactive Component Overview -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Interactive Component Architecture</h2>
+                <div class="grid lg:grid-cols-2 xl:grid-cols-4 gap-6">
+                    <div id="agent-core-card" class="component-card interactive-element bg-white rounded-xl p-6 text-center">
+                        <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-3xl">🧠</span>
+                        </div>
+                        <h3 class="font-bold text-lg mb-2">Agent Core</h3>
+                        <p class="text-sm text-gray-600">Central coordination and decision-making unit</p>
+                    </div>
+
+                    <div id="memory-card" class="component-card interactive-element bg-white rounded-xl p-6 text-center">
+                        <div class="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-3xl">💾</span>
+                        </div>
+                        <h3 class="font-bold text-lg mb-2">Memory Module</h3>
+                        <p class="text-sm text-gray-600">Short-term and long-term information storage</p>
+                    </div>
+
+                    <div id="tools-card" class="component-card interactive-element bg-white rounded-xl p-6 text-center">
+                        <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-3xl">🔧</span>
+                        </div>
+                        <h3 class="font-bold text-lg mb-2">Tools</h3>
+                        <p class="text-sm text-gray-600">External APIs and executable workflows</p>
+                    </div>
+
+                    <div id="planning-card" class="component-card interactive-element bg-white rounded-xl p-6 text-center">
+                        <div class="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                            <span class="text-3xl">📋</span>
+                        </div>
+                        <h3 class="font-bold text-lg mb-2">Planning Module</h3>
+                        <p class="text-sm text-gray-600">Task decomposition and strategy formation</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Detailed Component Explanations -->
+            <div id="component-details" class="space-y-8">
+                <!-- Agent Core Detail -->
+                <div id="agent-core-detail" class="component-detail bg-gradient-to-br from-purple-50 to-indigo-50 rounded-2xl p-8 border-2 border-purple-200">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 bg-purple-500 rounded-full flex items-center justify-center">
+                            <span class="text-white text-2xl">🧠</span>
+                        </div>
+                        <h2 class="text-2xl font-bold">Agent Core: The Brain</h2>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-gray-700 mb-4">The Agent Core is the central coordination module that acts as the "brain" of the LLM agent, managing all other components and making high-level decisions.</p>
+                            <div class="space-y-3">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Goal Definition:</strong> Establishes and maintains the agent's objectives</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Tool Access:</strong> Provides interface to available tools and APIs</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Planning Coordination:</strong> Explains how to use planning modules</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Memory Integration:</strong> Incorporates relevant historical context</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-purple-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Persona (Optional):</strong> Defines agent personality and behavior patterns</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-block syntax-highlight">
+<span class="comment"># Agent Core Example</span>
+<span class="keyword">class</span> <span class="function">AgentCore</span>:
+    <span class="keyword">def</span> <span class="function">__init__</span>(<span class="keyword">self</span>):
+        <span class="keyword">self</span>.goals = []
+        <span class="keyword">self</span>.available_tools = []
+        <span class="keyword">self</span>.memory = MemoryModule()
+        <span class="keyword">self</span>.planner = PlanningModule()
+        <span class="keyword">self</span>.persona = <span class="string">"helpful assistant"</span>
+
+    <span class="keyword">def</span> <span class="function">coordinate</span>(<span class="keyword">self</span>, user_input):
+        <span class="comment"># Central decision making</span>
+        context = <span class="keyword">self</span>.memory.retrieve_relevant()
+        plan = <span class="keyword">self</span>.planner.create_plan(user_input)
+        <span class="keyword">return</span> <span class="keyword">self</span>.execute_plan(plan, context)
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Memory Module Detail -->
+                <div id="memory-detail" class="component-detail bg-gradient-to-br from-blue-50 to-cyan-50 rounded-2xl p-8 border-2 border-blue-200">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 bg-blue-500 rounded-full flex items-center justify-center">
+                            <span class="text-white text-2xl">💾</span>
+                        </div>
+                        <h2 class="text-2xl font-bold">Memory Module: Information Storage</h2>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-gray-700 mb-6">The Memory Module stores internal logs, user interactions, and learned information, enabling the agent to maintain context and improve over time.</p>
+
+                            <div class="space-y-4">
+                                <div class="bg-white p-4 rounded-lg border-l-4 border-green-400">
+                                    <h4 class="font-semibold text-green-700 mb-2">Short-term Memory</h4>
+                                    <ul class="text-sm text-gray-600 space-y-1">
+                                        <li>• "Train of thought" for current session</li>
+                                        <li>• In-context learning within conversation</li>
+                                        <li>• Limited by LLM context window</li>
+                                        <li>• Temporary and session-specific</li>
+                                    </ul>
+                                </div>
+
+                                <div class="bg-white p-4 rounded-lg border-l-4 border-blue-400">
+                                    <h4 class="font-semibold text-blue-700 mb-2">Long-term Memory</h4>
+                                    <ul class="text-sm text-gray-600 space-y-1">
+                                        <li>• Persistent conversation history</li>
+                                        <li>• External vector stores for retrieval</li>
+                                        <li>• Semantic similarity matching</li>
+                                        <li>• Importance and recency weighting</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4">Memory Formats</h3>
+                            <div class="space-y-3 mb-6">
+                                <div class="flex items-center gap-3 p-3 bg-white rounded-lg">
+                                    <span class="text-2xl">📝</span>
+                                    <div>
+                                        <h4 class="font-semibold">Natural Language</h4>
+                                        <p class="text-xs text-gray-600">Human-readable conversation logs</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3 p-3 bg-white rounded-lg">
+                                    <span class="text-2xl">🔢</span>
+                                    <div>
+                                        <h4 class="font-semibold">Embeddings</h4>
+                                        <p class="text-xs text-gray-600">Vector representations for similarity</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3 p-3 bg-white rounded-lg">
+                                    <span class="text-2xl">🗄️</span>
+                                    <div>
+                                        <h4 class="font-semibold">Databases</h4>
+                                        <p class="text-xs text-gray-600">Structured data storage</p>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3 p-3 bg-white rounded-lg">
+                                    <span class="text-2xl">📋</span>
+                                    <div>
+                                        <h4 class="font-semibold">Key-Value Lists</h4>
+                                        <p class="text-xs text-gray-600">Structured information pairs</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tools Detail -->
+                <div id="tools-detail" class="component-detail bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl p-8 border-2 border-green-200">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 bg-green-500 rounded-full flex items-center justify-center">
+                            <span class="text-white text-2xl">🔧</span>
+                        </div>
+                        <h2 class="text-2xl font-bold">Tools: External Capabilities</h2>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-gray-700 mb-4">Tools are well-defined executable workflows or specialized third-party APIs that extend the agent's capabilities beyond text generation.</p>
+                            <div class="space-y-3 mb-6">
+                                <div class="flex items-start gap-3">
+                                    <span class="text-green-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>RAG Pipeline:</strong> Retrieval-augmented generation for knowledge access</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-green-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Code Interpreter:</strong> Execute and debug code in various languages</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-green-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Search APIs:</strong> Web search and information retrieval</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-green-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Weather API:</strong> Real-time weather information</span>
+                                </div>
+                                <div class="flex items-start gap-3">
+                                    <span class="text-green-500 mt-1">•</span>
+                                    <span class="text-sm"><strong>Messaging APIs:</strong> Communication with external systems</span>
+                                </div>
+                            </div>
+
+                            <h4 class="font-semibold mb-3">Tool Integration Methods</h4>
+                            <div class="space-y-3">
+                                <div class="bg-white p-3 rounded border">
+                                    <h5 class="font-semibold text-sm text-blue-600">MRKL (Modular Reasoning, Knowledge and Language)</h5>
+                                    <p class="text-xs text-gray-600 mt-1">OpenAI's framework combining LLMs with external tools and knowledge bases. Allows models to call APIs, calculators, and databases.</p>
+                                </div>
+                                <div class="bg-white p-3 rounded border">
+                                    <h5 class="font-semibold text-sm text-green-600">Toolformer</h5>
+                                    <p class="text-xs text-gray-600 mt-1">Meta's approach to teach LLMs when and how to use external tools through self-supervised learning, without human annotations.</p>
+                                </div>
+                                <div class="bg-white p-3 rounded border">
+                                    <h5 class="font-semibold text-sm text-purple-600">Function Calling</h5>
+                                    <p class="text-xs text-gray-600 mt-1">Native capability in modern LLMs (GPT-4, Claude) to call predefined functions with structured parameters and handle responses.</p>
+                                </div>
+                                <div class="bg-white p-3 rounded border">
+                                    <h5 class="font-semibold text-sm text-orange-600">HuggingGPT</h5>
+                                    <p class="text-xs text-gray-600 mt-1">Microsoft's system that uses ChatGPT as a controller to coordinate multiple AI models from Hugging Face for complex multimodal tasks.</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="code-block syntax-highlight">
+<span class="comment"># Tool Integration Example</span>
+<span class="keyword">class</span> <span class="function">ToolManager</span>:
+    <span class="keyword">def</span> <span class="function">__init__</span>(<span class="keyword">self</span>):
+        <span class="keyword">self</span>.tools = {
+            <span class="string">"search"</span>: SearchAPI(),
+            <span class="string">"weather"</span>: WeatherAPI(),
+            <span class="string">"code"</span>: CodeInterpreter(),
+            <span class="string">"rag"</span>: RAGPipeline()
+        }
+
+    <span class="keyword">def</span> <span class="function">execute_tool</span>(<span class="keyword">self</span>, tool_name, params):
+        <span class="keyword">if</span> tool_name <span class="keyword">in</span> <span class="keyword">self</span>.tools:
+            <span class="keyword">return</span> <span class="keyword">self</span>.tools[tool_name].execute(params)
+        <span class="keyword">else</span>:
+            <span class="keyword">raise</span> <span class="function">ValueError</span>(<span class="string">f"Tool {tool_name} not found"</span>)
+
+<span class="comment"># Usage in agent</span>
+result = tool_manager.execute_tool(<span class="string">"search"</span>, {
+    <span class="string">"query"</span>: <span class="string">"latest AI research"</span>,
+    <span class="string">"limit"</span>: <span class="number">5</span>
+})
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Planning Module Detail -->
+                <div id="planning-detail" class="component-detail bg-gradient-to-br from-orange-50 to-yellow-50 rounded-2xl p-8 border-2 border-orange-200">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 bg-orange-500 rounded-full flex items-center justify-center">
+                            <span class="text-white text-2xl">📋</span>
+                        </div>
+                        <h2 class="text-2xl font-bold">Planning Module: Strategic Thinking</h2>
+                    </div>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div>
+                            <p class="text-gray-700 mb-6">The Planning Module addresses complex problems by breaking them down into simpler, manageable sub-tasks and creating execution strategies.</p>
+
+                            <div class="space-y-4">
+                                <div class="bg-white p-4 rounded-lg border-l-4 border-orange-400">
+                                    <h4 class="font-semibold text-orange-700 mb-2">Planning Without Feedback</h4>
+                                    <p class="text-sm text-gray-600 mb-2">Static decomposition approaches:</p>
+                                    <ul class="text-sm text-gray-600 space-y-1">
+                                        <li>• <strong>Chain of Thought:</strong> Sequential reasoning steps</li>
+                                        <li>• <strong>Tree of Thoughts:</strong> Branching exploration of possibilities</li>
+                                        <li>• <strong>Task Decomposition:</strong> Breaking complex tasks into subtasks</li>
+                                    </ul>
+                                </div>
+
+                                <div class="bg-white p-4 rounded-lg border-l-4 border-blue-400">
+                                    <h4 class="font-semibold text-blue-700 mb-2">Planning With Feedback</h4>
+                                    <p class="text-sm text-gray-600 mb-2">Iterative refinement approaches:</p>
+                                    <ul class="text-sm text-gray-600 space-y-1">
+                                        <li>• <strong>ReAct:</strong> Reasoning and Acting - Thought → Action → Observation cycle for systematic problem solving</li>
+                                        <li>• <strong>Reflexion:</strong> MIT/Princeton research method where agents reflect on failures and learn from past mistakes to improve future performance</li>
+                                        <li>• <strong>Critic Mechanisms:</strong> Self-evaluation systems that assess and improve agent outputs through iterative feedback</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-semibold mb-4">ReAct Planning Cycle</h3>
+                            <div class="space-y-3 mb-6">
+                                <div class="flex items-center gap-3 p-3 bg-white rounded-lg border-l-4 border-purple-400">
+                                    <span class="text-2xl">💭</span>
+                                    <div>
+                                        <h4 class="font-semibold">Thought</h4>
+                                        <p class="text-xs text-gray-600">Reasoning about the current situation</p>
+                                    </div>
+                                </div>
+                                <div class="text-center text-2xl text-gray-400">↓</div>
+                                <div class="flex items-center gap-3 p-3 bg-white rounded-lg border-l-4 border-green-400">
+                                    <span class="text-2xl">⚡</span>
+                                    <div>
+                                        <h4 class="font-semibold">Action</h4>
+                                        <p class="text-xs text-gray-600">Executing a specific tool or operation</p>
+                                    </div>
+                                </div>
+                                <div class="text-center text-2xl text-gray-400">↓</div>
+                                <div class="flex items-center gap-3 p-3 bg-white rounded-lg border-l-4 border-blue-400">
+                                    <span class="text-2xl">👁️</span>
+                                    <div>
+                                        <h4 class="font-semibold">Observation</h4>
+                                        <p class="text-xs text-gray-600">Receiving feedback from the environment</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="code-block syntax-highlight text-xs">
+<span class="comment"># ReAct Planning Example</span>
+<span class="keyword">def</span> <span class="function">react_cycle</span>(query):
+    <span class="keyword">while</span> <span class="keyword">not</span> task_complete:
+        <span class="comment"># Thought</span>
+        thought = llm.generate(<span class="string">f"Think: {current_state}"</span>)
+
+        <span class="comment"># Action</span>
+        action = select_action(thought)
+        result = execute_tool(action)
+
+        <span class="comment"># Observation</span>
+        observation = process_result(result)
+        current_state = update_state(observation)
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Applications Section -->
+        <section id="applications" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">LLM Agent Applications</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Real-world enterprise use cases where LLM agents excel beyond traditional approaches</p>
+            </div>
+
+            <!-- Enterprise Use Cases -->
+            <div class="feature-grid mb-12">
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">💬</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">"Talk to Your Data" Agents</h3>
+                    <p class="text-gray-600 mb-4">Handle complex queries over structured and unstructured data with advanced reasoning capabilities.</p>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-blue-500">✓</span>
+                            <span>Complex data structure navigation</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-blue-500">✓</span>
+                            <span>Multi-step query decomposition</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-blue-500">✓</span>
+                            <span>Context-aware data retrieval</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🤖</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Swarms of Agents</h3>
+                    <p class="text-gray-600 mb-4">Collections of agents collaborating in shared environments for complex simulations and development.</p>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-green-500">✓</span>
+                            <span>Behavioral simulations</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-green-500">✓</span>
+                            <span>Rapid software prototyping</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-green-500">✓</span>
+                            <span>Marketing campaign design</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🎯</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Recommendation Agents</h3>
+                    <p class="text-gray-600 mb-4">Craft personalized experiences and conversational recommendation systems.</p>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-purple-500">✓</span>
+                            <span>E-commerce personalization</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-purple-500">✓</span>
+                            <span>Content recommendation</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-purple-500">✓</span>
+                            <span>Experience design</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-orange-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">✍️</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">AI Author Agents</h3>
+                    <p class="text-gray-600 mb-4">Co-author varied material tailored to specific audiences and personal styles.</p>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-orange-500">✓</span>
+                            <span>Email composition</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-orange-500">✓</span>
+                            <span>Presentation creation</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-orange-500">✓</span>
+                            <span>Style adaptation</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-red-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🎨</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Multi-modal Agents</h3>
+                    <p class="text-gray-600 mb-4">Process various input types beyond text, including images and audio files.</p>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-red-500">✓</span>
+                            <span>Image analysis</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-red-500">✓</span>
+                            <span>Audio processing</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-red-500">✓</span>
+                            <span>Cross-modal reasoning</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl p-6 shadow-lg card-hover">
+                    <div class="w-12 h-12 bg-indigo-100 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-2xl">🔬</span>
+                    </div>
+                    <h3 class="text-xl font-semibold mb-3">Specialized Domain Agents</h3>
+                    <p class="text-gray-600 mb-4">Expert agents for specific domains like chemistry, mathematics, and software engineering.</p>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center gap-2">
+                            <span class="text-indigo-500">✓</span>
+                            <span>Scientific research</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-indigo-500">✓</span>
+                            <span>Mathematical problem solving</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-indigo-500">✓</span>
+                            <span>Code generation & debugging</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Multi-Agent Patterns Section -->
+        <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+            <h2 class="text-2xl font-bold mb-6 text-center">Multi-Agent Architecture Patterns</h2>
+            <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200">
+                    <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">👑</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-3">Supervisor Pattern</h3>
+                    <p class="text-sm text-gray-600 mb-4">Central coordinator agent manages and delegates tasks to specialized worker agents.</p>
+                    <div class="text-xs text-blue-600 font-medium">
+                        <div>✓ Clear hierarchy</div>
+                        <div>✓ Easy coordination</div>
+                        <div>✗ Single point of failure</div>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border-2 border-green-200">
+                    <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">🕸️</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-3">Network Pattern</h3>
+                    <p class="text-sm text-gray-600 mb-4">Agents communicate peer-to-peer, making autonomous decisions about collaboration.</p>
+                    <div class="text-xs text-green-600 font-medium">
+                        <div>✓ Fault tolerant</div>
+                        <div>✓ Scalable</div>
+                        <div>✗ Complex coordination</div>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border-2 border-purple-200">
+                    <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">🏢</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-3">Hierarchical Pattern</h3>
+                    <p class="text-sm text-gray-600 mb-4">Multi-level management structure with managers coordinating teams of agents.</p>
+                    <div class="text-xs text-purple-600 font-medium">
+                        <div>✓ Organized structure</div>
+                        <div>✓ Clear responsibilities</div>
+                        <div>✗ Communication overhead</div>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-orange-50 to-amber-50 rounded-xl p-6 border-2 border-orange-200">
+                    <div class="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">🐝</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-3">Swarm Pattern</h3>
+                    <p class="text-sm text-gray-600 mb-4">Large number of simple agents work together to solve complex problems through emergence.</p>
+                    <div class="text-xs text-orange-600 font-medium">
+                        <div>✓ Emergent intelligence</div>
+                        <div>✓ Highly resilient</div>
+                        <div>✗ Unpredictable behavior</div>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-6 border-2 border-red-200">
+                    <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">🎭</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-3">Orchestrator-Worker</h3>
+                    <p class="text-sm text-gray-600 mb-4">Central orchestrator manages workflow while workers execute specific tasks.</p>
+                    <div class="text-xs text-red-600 font-medium">
+                        <div>✓ Workflow control</div>
+                        <div>✓ Task specialization</div>
+                        <div>✗ Orchestrator bottleneck</div>
+                    </div>
+                </div>
+
+                <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-6 border-2 border-teal-200">
+                    <div class="w-12 h-12 bg-teal-500 rounded-lg flex items-center justify-center mb-4">
+                        <span class="text-white font-bold">🔄</span>
+                    </div>
+                    <h3 class="font-semibold text-lg mb-3">Pipeline Pattern</h3>
+                    <p class="text-sm text-gray-600 mb-4">Agents arranged in sequence, each processing and passing results to the next.</p>
+                    <div class="text-xs text-teal-600 font-medium">
+                        <div>✓ Clear data flow</div>
+                        <div>✓ Easy to debug</div>
+                        <div>✗ Sequential bottlenecks</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Frameworks Section -->
+        <section id="frameworks" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Agent Development Frameworks</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Comprehensive guide to the leading frameworks for building production-ready AI agents</p>
+            </div>
+
+            <!-- Framework Comparison Overview -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Framework Comparison Matrix</h2>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead>
+                            <tr class="border-b-2 border-gray-200">
+                                <th class="text-left p-3 font-semibold">Framework</th>
+                                <th class="text-left p-3 font-semibold">Best For</th>
+                                <th class="text-left p-3 font-semibold">Key Strength</th>
+                                <th class="text-left p-3 font-semibold">Learning Curve</th>
+                                <th class="text-left p-3 font-semibold">Multi-Agent</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-gray-700">
+                            <tr class="border-b border-gray-100">
+                                <td class="p-3 font-medium text-blue-600">LangChain</td>
+                                <td class="p-3">General LLM apps</td>
+                                <td class="p-3">Ecosystem & integrations</td>
+                                <td class="p-3">Medium</td>
+                                <td class="p-3">✓ Basic</td>
+                            </tr>
+                            <tr class="border-b border-gray-100">
+                                <td class="p-3 font-medium text-green-600">LangGraph</td>
+                                <td class="p-3">Complex workflows</td>
+                                <td class="p-3">State management & graphs</td>
+                                <td class="p-3">High</td>
+                                <td class="p-3">✓✓ Advanced</td>
+                            </tr>
+                            <tr class="border-b border-gray-100">
+                                <td class="p-3 font-medium text-orange-600">CrewAI</td>
+                                <td class="p-3">Team collaboration</td>
+                                <td class="p-3">Role-based agents</td>
+                                <td class="p-3">Low</td>
+                                <td class="p-3">✓✓✓ Native</td>
+                            </tr>
+                            <tr class="border-b border-gray-100">
+                                <td class="p-3 font-medium text-purple-600">Strands</td>
+                                <td class="p-3">Simple & fast</td>
+                                <td class="p-3">Model-driven approach</td>
+                                <td class="p-3">Very Low</td>
+                                <td class="p-3">✓ Supported</td>
+                            </tr>
+                            <tr class="border-b border-gray-100">
+                                <td class="p-3 font-medium text-red-600">AutoGen</td>
+                                <td class="p-3">Conversational AI</td>
+                                <td class="p-3">Multi-agent chat</td>
+                                <td class="p-3">Medium</td>
+                                <td class="p-3">✓✓ Core feature</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- LangChain Deep Dive -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold">LC</span>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold">LangChain: The Foundation Framework</h2>
+                        <p class="text-gray-600">Comprehensive toolkit for LLM application development</p>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Core Concepts</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Chains</h4>
+                                    <p class="text-sm text-gray-600">Sequence of calls to LLMs or other utilities</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Agents</h4>
+                                    <p class="text-sm text-gray-600">Use LLMs to decide which actions to take</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Memory</h4>
+                                    <p class="text-sm text-gray-600">Persist state between calls</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Tools</h4>
+                                    <p class="text-sm text-gray-600">Interfaces for agents to interact with the world</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-semibold mb-4 mt-6">Memory Systems</h3>
+                        <div class="bg-blue-50 p-4 rounded-lg">
+                            <h4 class="font-semibold text-blue-800 mb-2">Advanced Memory Features</h4>
+                            <ul class="text-sm text-blue-700 space-y-1">
+                                <li>• ConversationBufferMemory for chat history</li>
+                                <li>• ReadOnlySharedMemory for tool access</li>
+                                <li>• Vector store integration for long-term memory</li>
+                                <li>• Memory persistence with checkpointing</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="code-block syntax-highlight text-xs">
+                        <pre><code><span class="comment"># LangChain Agent with Memory</span>
+<span class="keyword">from</span> langchain <span class="keyword">import</span> hub
+<span class="keyword">from</span> langchain.agents <span class="keyword">import</span> AgentExecutor, create_react_agent
+<span class="keyword">from</span> langchain.memory <span class="keyword">import</span> ConversationBufferMemory
+<span class="keyword">from</span> langchain_core.tools <span class="keyword">import</span> tool
+<span class="keyword">from</span> langchain_openai <span class="keyword">import</span> ChatOpenAI
+
+<span class="comment"># Define custom tool</span>
+<span class="keyword">@tool</span>
+<span class="keyword">def</span> <span class="function">get_user_age</span>(name: <span class="property">str</span>) -> <span class="property">str</span>:
+    <span class="string">"""Use this tool to find the user's age."""</span>
+    <span class="keyword">if</span> <span class="string">"bob"</span> <span class="keyword">in</span> name.lower():
+        <span class="keyword">return</span> <span class="string">"42 years old"</span>
+    <span class="keyword">return</span> <span class="string">"41 years old"</span>
+
+<span class="comment"># Initialize model and memory</span>
+model = ChatOpenAI(temperature=<span class="number">0</span>)
+memory = ConversationBufferMemory(
+    memory_key=<span class="string">"chat_history"</span>,
+    return_messages=<span class="keyword">True</span>
+)
+
+<span class="comment"># Create agent with tools and memory</span>
+tools = [get_user_age]
+prompt = hub.pull(<span class="string">"hwchase17/react"</span>)
+agent = create_react_agent(model, tools, prompt)
+
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    memory=memory,  <span class="comment"># Persistent memory</span>
+    verbose=<span class="keyword">True</span>
+)
+
+<span class="comment"># Execute with memory</span>
+result = agent_executor.invoke({
+    <span class="string">"input"</span>: <span class="string">"Hi! My name is Bob. What is my age?"</span>
+})</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LangGraph Deep Dive -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold">LG</span>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold">LangGraph: Advanced Workflow Orchestration</h2>
+                        <p class="text-gray-600">Build resilient, stateful multi-agent applications</p>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Key Features</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-start gap-3">
+                                <span class="text-green-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">State Management</h4>
+                                    <p class="text-sm text-gray-600">Persistent state across agent interactions</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-green-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Graph-Based Workflows</h4>
+                                    <p class="text-sm text-gray-600">Define complex agent interactions as graphs</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-green-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Human-in-the-Loop</h4>
+                                    <p class="text-sm text-gray-600">Interrupt and resume agent execution</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-green-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Streaming Support</h4>
+                                    <p class="text-sm text-gray-600">Real-time updates and partial results</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-semibold mb-4 mt-6">Multi-Agent Patterns</h3>
+                        <div class="bg-green-50 p-4 rounded-lg">
+                            <h4 class="font-semibold text-green-800 mb-2">Supported Architectures</h4>
+                            <ul class="text-sm text-green-700 space-y-1">
+                                <li>• Supervisor: Central coordination</li>
+                                <li>• Network: Peer-to-peer communication</li>
+                                <li>• Hierarchical: Multi-level management</li>
+                                <li>• Swarm: Dynamic handoffs</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="code-block syntax-highlight text-xs">
+                        <pre><code><span class="comment"># LangGraph Multi-Agent Supervisor</span>
+<span class="keyword">from</span> langgraph.graph <span class="keyword">import</span> StateGraph, MessagesState
+<span class="keyword">from</span> langgraph.prebuilt <span class="keyword">import</span> create_react_agent
+<span class="keyword">from</span> langgraph_supervisor <span class="keyword">import</span> create_supervisor
+<span class="keyword">from</span> langchain_openai <span class="keyword">import</span> ChatOpenAI
+
+<span class="comment"># Define specialized agents</span>
+<span class="keyword">def</span> <span class="function">book_flight</span>(from_airport: <span class="property">str</span>, to_airport: <span class="property">str</span>):
+    <span class="string">"""Book a flight"""</span>
+    <span class="keyword">return</span> <span class="string">f"Booked flight from {from_airport} to {to_airport}"</span>
+
+<span class="keyword">def</span> <span class="function">book_hotel</span>(hotel_name: <span class="property">str</span>):
+    <span class="string">"""Book a hotel"""</span>
+    <span class="keyword">return</span> <span class="string">f"Booked stay at {hotel_name}"</span>
+
+<span class="comment"># Create specialized agents</span>
+flight_assistant = create_react_agent(
+    model=<span class="string">"openai:gpt-4o"</span>,
+    tools=[book_flight],
+    prompt=<span class="string">"You are a flight booking assistant"</span>,
+    name=<span class="string">"flight_assistant"</span>
+)
+
+hotel_assistant = create_react_agent(
+    model=<span class="string">"openai:gpt-4o"</span>,
+    tools=[book_hotel],
+    prompt=<span class="string">"You are a hotel booking assistant"</span>,
+    name=<span class="string">"hotel_assistant"</span>
+)
+
+<span class="comment"># Create supervisor to coordinate agents</span>
+supervisor = create_supervisor(
+    agents=[flight_assistant, hotel_assistant],
+    model=ChatOpenAI(model=<span class="string">"gpt-4o"</span>),
+    prompt=<span class="string">"Coordinate hotel and flight bookings"</span>
+).compile()
+
+<span class="comment"># Execute multi-agent workflow</span>
+<span class="keyword">for</span> chunk <span class="keyword">in</span> supervisor.stream({
+    <span class="string">"messages"</span>: [{
+        <span class="string">"role"</span>: <span class="string">"user"</span>,
+        <span class="string">"content"</span>: <span class="string">"Book flight BOS->JFK and McKittrick Hotel"</span>
+    }]
+}):
+    <span class="function">print</span>(chunk)</code></pre>
+                    </div>
+                </div>
+            </div>
+
+            <!-- CrewAI Deep Dive -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="w-12 h-12 bg-orange-500 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold">CA</span>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold">CrewAI: Role-Based Multi-Agent Teams</h2>
+                        <p class="text-gray-600">Orchestrate autonomous AI agent crews with defined roles</p>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Core Concepts</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-start gap-3">
+                                <span class="text-orange-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Agents with Roles</h4>
+                                    <p class="text-sm text-gray-600">Each agent has specific role, goal, and backstory</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-orange-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Tasks & Delegation</h4>
+                                    <p class="text-sm text-gray-600">Agents can delegate work to other agents</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-orange-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Process Management</h4>
+                                    <p class="text-sm text-gray-600">Sequential, hierarchical, or consensus processes</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-orange-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Memory & Context</h4>
+                                    <p class="text-sm text-gray-600">Shared memory across crew members</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-semibold mb-4 mt-6">Collaboration Features</h3>
+                        <div class="bg-orange-50 p-4 rounded-lg">
+                            <h4 class="font-semibold text-orange-800 mb-2">Advanced Teamwork</h4>
+                            <ul class="text-sm text-orange-700 space-y-1">
+                                <li>• Agent delegation and handoffs</li>
+                                <li>• Shared context and memory</li>
+                                <li>• Quality assurance and review</li>
+                                <li>• Hierarchical task management</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="code-block syntax-highlight text-xs">
+<span class="comment"># CrewAI Content Creation Team</span>
+<span class="keyword">from</span> crewai <span class="keyword">import</span> Agent, Task, Crew, Process
+<span class="keyword">from</span> crewai_tools <span class="keyword">import</span> SerperDevTool, WebsiteSearchTool
+
+<span class="comment"># Define specialized agents</span>
+researcher = Agent(
+    role=<span class="string">'Market Research Analyst'</span>,
+    goal=<span class="string">'Find and analyze market trends'</span>,
+    backstory=<span class="string">"""You are an expert analyst with 10 years
+    of experience in market research."""</span>,
+    tools=[SerperDevTool(), WebsiteSearchTool()],
+    verbose=<span class="keyword">True</span>,
+    allow_delegation=<span class="keyword">False</span>
+)
+
+writer = Agent(
+    role=<span class="string">'Content Writer'</span>,
+    goal=<span class="string">'Create engaging content based on research'</span>,
+    backstory=<span class="string">"""You are a skilled writer who creates
+    compelling content from research data."""</span>,
+    verbose=<span class="keyword">True</span>,
+    allow_delegation=<span class="keyword">True</span>  <span class="comment"># Can delegate to researcher</span>
+)
+
+editor = Agent(
+    role=<span class="string">'Editor'</span>,
+    goal=<span class="string">'Review and improve content quality'</span>,
+    backstory=<span class="string">"""You are a meticulous editor who ensures
+    content meets high standards."""</span>,
+    verbose=<span class="keyword">True</span>
+)
+
+<span class="comment"># Define tasks with dependencies</span>
+research_task = Task(
+    description=<span class="string">'Research AI agent market trends for 2024'</span>,
+    agent=researcher,
+    expected_output=<span class="string">'Detailed market analysis report'</span>
+)
+
+writing_task = Task(
+    description=<span class="string">'Write blog post about AI agent trends'</span>,
+    agent=writer,
+    expected_output=<span class="string">'1500-word blog post'</span>,
+    context=[research_task]  <span class="comment"># Depends on research</span>
+)
+
+editing_task = Task(
+    description=<span class="string">'Edit and finalize the blog post'</span>,
+    agent=editor,
+    expected_output=<span class="string">'Polished, publication-ready post'</span>,
+    context=[writing_task]
+)
+
+<span class="comment"># Create and execute crew</span>
+crew = Crew(
+    agents=[researcher, writer, editor],
+    tasks=[research_task, writing_task, editing_task],
+    process=Process.sequential,  <span class="comment"># Sequential execution</span>
+    memory=<span class="keyword">True</span>,  <span class="comment"># Shared memory</span>
+    verbose=<span class="keyword">True</span>
+)
+
+result = crew.kickoff()
+                    </div>
+                </div>
+            </div>
+
+            <!-- Strands Deep Dive -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <div class="flex items-center gap-4 mb-6">
+                    <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center">
+                        <span class="text-white font-bold">SA</span>
+                    </div>
+                    <div>
+                        <h2 class="text-2xl font-bold">Strands: Model-Driven Agent Development</h2>
+                        <p class="text-gray-600">Lightweight, fast agent framework with MCP integration</p>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Key Features</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-start gap-3">
+                                <span class="text-purple-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Model-Driven</h4>
+                                    <p class="text-sm text-gray-600">Define agents through simple model configurations</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-purple-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">MCP Integration</h4>
+                                    <p class="text-sm text-gray-600">Native Model Context Protocol support</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-purple-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Multi-Provider</h4>
+                                    <p class="text-sm text-gray-600">Support for OpenAI, Anthropic, Google, etc.</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-purple-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Lightweight</h4>
+                                    <p class="text-sm text-gray-600">Minimal overhead, fast execution</p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <h3 class="text-lg font-semibold mb-4 mt-6">Architecture Benefits</h3>
+                        <div class="bg-purple-50 p-4 rounded-lg">
+                            <h4 class="font-semibold text-purple-800 mb-2">Design Philosophy</h4>
+                            <ul class="text-sm text-purple-700 space-y-1">
+                                <li>• Configuration over code</li>
+                                <li>• Rapid prototyping and deployment</li>
+                                <li>• Built-in observability and monitoring</li>
+                                <li>• Production-ready from day one</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div class="code-block syntax-highlight text-xs">
+<span class="comment"># Strands Agent Configuration</span>
+<span class="keyword">from</span> strands <span class="keyword">import</span> Agent, Tool, create_mcp_client
+<span class="keyword">import</span> asyncio
+
+<span class="comment"># Define tools using MCP</span>
+<span class="keyword">async</span> <span class="keyword">def</span> <span class="function">setup_tools</span>():
+    <span class="comment"># Connect to MCP servers</span>
+    filesystem_client = <span class="keyword">await</span> create_mcp_client(
+        <span class="string">"stdio"</span>,
+        command=<span class="string">"npx"</span>,
+        args=[<span class="string">"-y"</span>, <span class="string">"@modelcontextprotocol/server-filesystem"</span>]
+    )
+
+    web_client = <span class="keyword">await</span> create_mcp_client(
+        <span class="string">"stdio"</span>,
+        command=<span class="string">"npx"</span>,
+        args=[<span class="string">"-y"</span>, <span class="string">"@modelcontextprotocol/server-brave-search"</span>]
+    )
+
+    <span class="keyword">return</span> [filesystem_client, web_client]
+
+<span class="comment"># Create agent with model-driven approach</span>
+<span class="keyword">async</span> <span class="keyword">def</span> <span class="function">main</span>():
+    tools = <span class="keyword">await</span> setup_tools()
+
+    agent = Agent(
+        name=<span class="string">"research_assistant"</span>,
+        model=<span class="string">"anthropic:claude-3-5-sonnet-20241022"</span>,
+        system_prompt=<span class="string">"""You are a research assistant that can:
+        1. Search the web for information
+        2. Read and write files
+        3. Analyze data and create reports"""</span>,
+        tools=tools,
+        max_iterations=<span class="number">10</span>,
+        temperature=<span class="number">0.1</span>
+    )
+
+    <span class="comment"># Execute research task</span>
+    result = <span class="keyword">await</span> agent.run(
+        <span class="string">"""Research the latest developments in AI agents
+        and create a summary report. Save it to 'ai_agents_report.md'"""</span>
+    )
+
+    <span class="function">print</span>(<span class="string">f"Task completed: {result.status}"</span>)
+    <span class="function">print</span>(<span class="string">f"Output: {result.output}"</span>)
+
+<span class="comment"># Multi-agent collaboration</span>
+<span class="keyword">async</span> <span class="keyword">def</span> <span class="function">multi_agent_example</span>():
+    <span class="comment"># Create specialized agents</span>
+    researcher = Agent(
+        name=<span class="string">"researcher"</span>,
+        model=<span class="string">"openai:gpt-4o"</span>,
+        system_prompt=<span class="string">"You specialize in research and data gathering"</span>
+    )
+
+    analyst = Agent(
+        name=<span class="string">"analyst"</span>,
+        model=<span class="string">"anthropic:claude-3-5-sonnet-20241022"</span>,
+        system_prompt=<span class="string">"You analyze data and create insights"</span>
+    )
+
+    <span class="comment"># Coordinate agents</span>
+    research_result = <span class="keyword">await</span> researcher.run(<span class="string">"Find AI market data"</span>)
+    analysis = <span class="keyword">await</span> analyst.run(
+        <span class="string">f"Analyze this data: {research_result.output}"</span>
+    )
+
+asyncio.run(main())
+                    </div>
+                </div>
+            </div>
+
+            <!-- Notable Agents -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Notable LLM-based Agents</h2>
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl p-6 border border-blue-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">🧪</span>
+                            <h3 class="font-semibold text-lg">ChemCrow</h3>
+                        </div>
+                        <p class="text-sm text-gray-600">Specialized chemistry agent for molecular analysis and synthesis planning</p>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border border-green-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">👥</span>
+                            <h3 class="font-semibold text-lg">Generative Agents</h3>
+                        </div>
+                        <p class="text-sm text-gray-600">Simulating believable human behavior in interactive environments</p>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 border border-purple-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">💻</span>
+                            <h3 class="font-semibold text-lg">ChatDev</h3>
+                        </div>
+                        <p class="text-sm text-gray-600">Multi-agent software engineering team for rapid development</p>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-orange-50 to-red-50 rounded-xl p-6 border border-orange-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">📊</span>
+                            <h3 class="font-semibold text-lg">Math Agents</h3>
+                        </div>
+                        <p class="text-sm text-gray-600">Advanced mathematical problem solving and theorem proving</p>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl p-6 border border-indigo-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">🖥️</span>
+                            <h3 class="font-semibold text-lg">OS-Copilot</h3>
+                        </div>
+                        <p class="text-sm text-gray-600">Operating system interface automation and control</p>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl p-6 border border-teal-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">🔬</span>
+                            <h3 class="font-semibold text-lg">Research Agents</h3>
+                        </div>
+                        <p class="text-sm text-gray-600">Automated literature review and hypothesis generation</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Development Frameworks -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Development Frameworks</h2>
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="text-center p-4 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl border border-blue-200 card-hover">
+                        <div class="w-12 h-12 bg-blue-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">LC</span>
+                        </div>
+                        <h3 class="font-semibold">LangChain</h3>
+                        <p class="text-xs text-gray-600 mt-1">Popular framework for LLM applications</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-emerald-50 to-green-50 rounded-xl border border-emerald-200 card-hover">
+                        <div class="w-12 h-12 bg-emerald-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">LG</span>
+                        </div>
+                        <h3 class="font-semibold">LangGraph</h3>
+                        <p class="text-xs text-gray-600 mt-1">Build resilient agents as graphs</p>
+                        <span class="badge new mt-2">Latest</span>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border border-green-200 card-hover">
+                        <div class="w-12 h-12 bg-green-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">AG</span>
+                        </div>
+                        <h3 class="font-semibold">AutoGPT</h3>
+                        <p class="text-xs text-gray-600 mt-1">Autonomous GPT-4 agent framework</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border border-purple-200 card-hover">
+                        <div class="w-12 h-12 bg-purple-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">LR</span>
+                        </div>
+                        <h3 class="font-semibold">Langroid</h3>
+                        <p class="text-xs text-gray-600 mt-1">Multi-agent programming framework</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-orange-50 to-red-50 rounded-xl border border-orange-200 card-hover">
+                        <div class="w-12 h-12 bg-orange-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">AG</span>
+                        </div>
+                        <h3 class="font-semibold">AutoGen</h3>
+                        <p class="text-xs text-gray-600 mt-1">Microsoft's multi-agent framework</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-teal-50 to-cyan-50 rounded-xl border border-teal-200 card-hover">
+                        <div class="w-12 h-12 bg-teal-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">OA</span>
+                        </div>
+                        <h3 class="font-semibold">OpenAgents</h3>
+                        <p class="text-xs text-gray-600 mt-1">Open platform for language agents</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-indigo-50 to-blue-50 rounded-xl border border-indigo-200 card-hover">
+                        <div class="w-12 h-12 bg-indigo-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">LI</span>
+                        </div>
+                        <h3 class="font-semibold">LlamaIndex</h3>
+                        <p class="text-xs text-gray-600 mt-1">Data framework for LLM applications</p>
+                    </div>
+
+                    <div class="text-center p-4 bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl border border-yellow-200 card-hover">
+                        <div class="w-12 h-12 bg-yellow-500 rounded-lg mx-auto mb-3 flex items-center justify-center">
+                            <span class="text-white font-bold">CA</span>
+                        </div>
+                        <h3 class="font-semibold">crewAI</h3>
+                        <p class="text-xs text-gray-600 mt-1">Framework for orchestrating AI agents</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Multi-Agent Architecture Patterns -->
+            <div class="bg-gradient-to-br from-indigo-50 to-purple-50 rounded-2xl p-8 border-2 border-indigo-200 mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Multi-Agent Architecture Patterns</h2>
+                <p class="text-center text-gray-600 mb-8">Modern frameworks like LangGraph enable sophisticated multi-agent architectures</p>
+
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div class="bg-white rounded-xl p-6 border border-indigo-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">🕸️</span>
+                            <h3 class="font-semibold text-lg">Network Pattern</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">Agents communicate freely with each other in a many-to-many relationship</p>
+                        <div class="text-xs text-gray-500">
+                            <strong>Use case:</strong> Collaborative problem-solving, peer-to-peer coordination
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 border border-indigo-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">👑</span>
+                            <h3 class="font-semibold text-lg">Supervisor Pattern</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">Central supervisor agent directs and coordinates worker agents</p>
+                        <div class="text-xs text-gray-500">
+                            <strong>Use case:</strong> Task delegation, centralized control, workflow orchestration
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 border border-indigo-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">🏗️</span>
+                            <h3 class="font-semibold text-lg">Hierarchical Pattern</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">Multi-level supervision with supervisors managing other supervisors</p>
+                        <div class="text-xs text-gray-500">
+                            <strong>Use case:</strong> Complex organizations, scalable management structures
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 border border-indigo-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">🐝</span>
+                            <h3 class="font-semibold text-lg">Swarm Pattern</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">Agents dynamically hand off control based on specializations</p>
+                        <div class="text-xs text-gray-500">
+                            <strong>Use case:</strong> Specialized expertise routing, dynamic task assignment
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 border border-indigo-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">⚡</span>
+                            <h3 class="font-semibold text-lg">Orchestrator-Worker</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">Central orchestrator creates and manages parallel worker tasks</p>
+                        <div class="text-xs text-gray-500">
+                            <strong>Use case:</strong> Parallel processing, map-reduce operations, batch tasks
+                        </div>
+                    </div>
+
+                    <div class="bg-white rounded-xl p-6 border border-indigo-200">
+                        <div class="flex items-center gap-3 mb-4">
+                            <span class="text-2xl">🔄</span>
+                            <h3 class="font-semibold text-lg">Custom Workflows</h3>
+                        </div>
+                        <p class="text-sm text-gray-600 mb-3">Partially deterministic communication patterns with custom routing</p>
+                        <div class="text-xs text-gray-500">
+                            <strong>Use case:</strong> Domain-specific workflows, conditional routing
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LangGraph Code Example -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">LangGraph Agent Implementation</h2>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Dynamic Agent Network</h3>
+                        <p class="text-gray-600 mb-4">Build flexible agent networks where agents can dynamically decide the next agent to call based on LLM decisions.</p>
+                        <div class="space-y-2 text-sm">
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">✓</span>
+                                <span>Non-linear agent interactions</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">✓</span>
+                                <span>LLM-driven routing decisions</span>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <span class="text-green-500">✓</span>
+                                <span>State management and updates</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="code-block syntax-highlight text-xs">
+<span class="comment"># LangGraph Dynamic Agent Network</span>
+<span class="keyword">from</span> langgraph.types <span class="keyword">import</span> Command
+<span class="keyword">from</span> langgraph.graph <span class="keyword">import</span> StateGraph, MessagesState
+
+<span class="keyword">def</span> <span class="function">agent_1</span>(state: MessagesState):
+    <span class="comment"># LLM decides next agent</span>
+    response = model.invoke(state[<span class="string">"messages"</span>])
+    <span class="keyword">return</span> Command(
+        goto=response[<span class="string">"next_agent"</span>],
+        update={<span class="string">"messages"</span>: [response[<span class="string">"content"</span>]]}
+    )
+
+<span class="keyword">def</span> <span class="function">agent_2</span>(state: MessagesState):
+    response = model.invoke(state[<span class="string">"messages"</span>])
+    <span class="keyword">return</span> Command(
+        goto=response[<span class="string">"next_agent"</span>],
+        update={<span class="string">"messages"</span>: [response[<span class="string">"content"</span>]]}
+    )
+
+builder = StateGraph(MessagesState)
+builder.add_node(agent_1)
+builder.add_node(agent_2)
+builder.add_edge(START, <span class="string">"agent_1"</span>)
+network = builder.compile()
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Evaluation Section -->
+        <section id="evaluation" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Agent Evaluation & Testing</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Comprehensive methods and metrics for assessing LLM agent performance, reliability, and safety</p>
+            </div>
+
+            <!-- Evaluation Framework -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Comprehensive Evaluation Framework</h2>
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <div class="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-6 border-2 border-blue-200">
+                        <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mb-4">
+                            <span class="text-white font-bold">🎯</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-3">Task Performance</h3>
+                        <ul class="text-sm text-gray-600 space-y-2">
+                            <li>• Success rate</li>
+                            <li>• Task completion time</li>
+                            <li>• Quality of outputs</li>
+                            <li>• Goal achievement</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-6 border-2 border-green-200">
+                        <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center mb-4">
+                            <span class="text-white font-bold">🔧</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-3">Tool Usage</h3>
+                        <ul class="text-sm text-gray-600 space-y-2">
+                            <li>• Tool selection accuracy</li>
+                            <li>• Parameter correctness</li>
+                            <li>• Error handling</li>
+                            <li>• Efficiency metrics</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-purple-50 to-violet-50 rounded-xl p-6 border-2 border-purple-200">
+                        <div class="w-12 h-12 bg-purple-500 rounded-lg flex items-center justify-center mb-4">
+                            <span class="text-white font-bold">🧠</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-3">Reasoning Quality</h3>
+                        <ul class="text-sm text-gray-600 space-y-2">
+                            <li>• Logical consistency</li>
+                            <li>• Planning effectiveness</li>
+                            <li>• Adaptability</li>
+                            <li>• Learning from feedback</li>
+                        </ul>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-red-50 to-rose-50 rounded-xl p-6 border-2 border-red-200">
+                        <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mb-4">
+                            <span class="text-white font-bold">🛡️</span>
+                        </div>
+                        <h3 class="font-semibold text-lg mb-3">Safety & Reliability</h3>
+                        <ul class="text-sm text-gray-600 space-y-2">
+                            <li>• Harmful output detection</li>
+                            <li>• Robustness to adversarial inputs</li>
+                            <li>• Failure recovery</li>
+                            <li>• Ethical compliance</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Evaluation Methods -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Evaluation Methods</h2>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Evaluation Approaches</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Human Annotation</h4>
+                                    <p class="text-sm text-gray-600">Expert evaluation of agent performance and outputs</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Turing Test Variants</h4>
+                                    <p class="text-sm text-gray-600">Testing human-like behavior and responses</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Task Success Metrics</h4>
+                                    <p class="text-sm text-gray-600">Measuring completion rates and accuracy</p>
+                                </div>
+                            </div>
+                            <div class="flex items-start gap-3">
+                                <span class="text-blue-500 mt-1">•</span>
+                                <div>
+                                    <h4 class="font-semibold">Efficiency Metrics</h4>
+                                    <p class="text-sm text-gray-600">Time, cost, and resource utilization</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div>
+                        <h3 class="text-lg font-semibold mb-4">Benchmarks & Protocols</h3>
+                        <div class="space-y-3">
+                            <div class="bg-gradient-to-r from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-200">
+                                <h4 class="font-semibold text-blue-700">AgentBench</h4>
+                                <p class="text-sm text-gray-600">Comprehensive evaluation suite for LLM agents</p>
+                            </div>
+                            <div class="bg-gradient-to-r from-green-50 to-emerald-50 p-4 rounded-lg border border-green-200">
+                                <h4 class="font-semibold text-green-700">ALFWorld</h4>
+                                <p class="text-sm text-gray-600">Interactive environment for embodied agents</p>
+                            </div>
+                            <div class="bg-gradient-to-r from-purple-50 to-pink-50 p-4 rounded-lg border border-purple-200">
+                                <h4 class="font-semibold text-purple-700">Social Evaluation</h4>
+                                <p class="text-sm text-gray-600">Multi-agent interaction and collaboration tests</p>
+                            </div>
+                            <div class="bg-gradient-to-r from-orange-50 to-red-50 p-4 rounded-lg border border-orange-200">
+                                <h4 class="font-semibold text-orange-700">Real-world Simulation</h4>
+                                <p class="text-sm text-gray-600">Testing in realistic environments and scenarios</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Challenges -->
+            <div class="bg-gradient-to-br from-red-50 to-pink-50 rounded-2xl p-8 border-2 border-red-200 mb-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Current Challenges & Limitations</h2>
+                <div class="grid md:grid-cols-2 gap-8">
+                    <div class="space-y-4">
+                        <div class="bg-white p-4 rounded-lg border-l-4 border-red-400">
+                            <h4 class="font-semibold text-red-700 mb-2">Role-playing Capability</h4>
+                            <p class="text-sm text-gray-600">Difficulty adapting to diverse or uncommon roles and personas</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border-l-4 border-orange-400">
+                            <h4 class="font-semibold text-orange-700 mb-2">Long-term Planning</h4>
+                            <p class="text-sm text-gray-600">Context length limitations affect complex, multi-step reasoning</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border-l-4 border-yellow-400">
+                            <h4 class="font-semibold text-yellow-700 mb-2">Human Alignment</h4>
+                            <p class="text-sm text-gray-600">Aligning with diverse human values and preferences</p>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <div class="bg-white p-4 rounded-lg border-l-4 border-blue-400">
+                            <h4 class="font-semibold text-blue-700 mb-2">Prompt Robustness</h4>
+                            <p class="text-sm text-gray-600">Sensitivity to prompt variations leading to unreliable behavior</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border-l-4 border-purple-400">
+                            <h4 class="font-semibold text-purple-700 mb-2">Knowledge Boundaries</h4>
+                            <p class="text-sm text-gray-600">Controlling knowledge scope and preventing hallucinations</p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border-l-4 border-green-400">
+                            <h4 class="font-semibold text-green-700 mb-2">Efficiency</h4>
+                            <p class="text-sm text-gray-600">High computational costs and inference speed dependencies</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Quiz Section -->
+        <section id="quiz" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Interactive Quiz</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Test your understanding of LLM agents with these comprehensive questions</p>
+            </div>
+
+            <!-- Quiz Questions -->
+            <div class="space-y-6">
+                <div class="quiz-card">
+                    <h3 class="font-semibold text-lg mb-3">1. Fundamental Differences</h3>
+                    <p class="text-gray-700 mb-4"><strong>Question:</strong> How do LLM-powered agents fundamentally differ from a basic Retrieval-Augmented Generation (RAG) pipeline?</p>
+                    <div class="bg-white/50 p-4 rounded-lg">
+                        <p class="text-sm"><strong>Answer:</strong> LLM-powered agents go beyond simple information retrieval by incorporating complex reasoning, planning, memory, and tool-use capabilities. Unlike RAG, which primarily augments LLMs with external data for answering direct questions, agents can break down complex problems into sub-tasks and execute plans using various tools.</p>
+                    </div>
+                </div>
+
+                <div class="quiz-card">
+                    <h3 class="font-semibold text-lg mb-3">2. Agent Core Function</h3>
+                    <p class="text-gray-700 mb-4"><strong>Question:</strong> Describe the primary function of the "agent core" within an LLM agent's architecture.</p>
+                    <div class="bg-white/50 p-4 rounded-lg">
+                        <p class="text-sm"><strong>Answer:</strong> The agent core is the central coordination and decision-making module of an LLM agent. It manages the agent's core logic, defines its goals, provides access to available tools, and explains how to utilize different planning modules.</p>
+                    </div>
+                </div>
+
+                <div class="quiz-card">
+                    <h3 class="font-semibold text-lg mb-3">3. Memory Systems</h3>
+                    <p class="text-gray-700 mb-4"><strong>Question:</strong> Explain the distinction between short-term and long-term memory in the context of LLM agents.</p>
+                    <div class="bg-white/50 p-4 rounded-lg">
+                        <p class="text-sm"><strong>Answer:</strong> Short-term memory refers to an agent's "train of thought" for a single user question, limited by the LLM's context window. Long-term memory, on the other hand, stores a cumulative log of past interactions and internal thoughts over extended periods, often relying on external vector stores for retrieval.</p>
+                    </div>
+                </div>
+
+                <div class="quiz-card">
+                    <h3 class="font-semibold text-lg mb-3">4. Tool Examples</h3>
+                    <p class="text-gray-700 mb-4"><strong>Question:</strong> Provide two examples of "tools" that an LLM agent might utilize, and briefly explain their purpose.</p>
+                    <div class="bg-white/50 p-4 rounded-lg">
+                        <p class="text-sm"><strong>Answer:</strong> An LLM agent might use a "code interpreter" to solve programmatic tasks or generate charts from data, or a "search API" to retrieve information from the internet. These tools enable the agent to interact with external environments and perform actions beyond its inherent knowledge.</p>
+                    </div>
+                </div>
+
+                <div class="quiz-card">
+                    <h3 class="font-semibold text-lg mb-3">5. Planning Module</h3>
+                    <p class="text-gray-700 mb-4"><strong>Question:</strong> What is the main goal of the planning module's "task and question decomposition" technique?</p>
+                    <div class="bg-white/50 p-4 rounded-lg">
+                        <p class="text-sm"><strong>Answer:</strong> The main goal of the planning module's "task and question decomposition" is to break down complex or compound questions into multiple, simpler sub-questions or tasks. This systematic breakdown allows the agent to address each part individually, making the overall problem more manageable and solvable.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Essay Questions -->
+            <div class="bg-white rounded-2xl p-8 shadow-lg mt-12">
+                <h2 class="text-2xl font-bold mb-6 text-center">Essay Format Questions</h2>
+                <div class="space-y-6">
+                    <div class="border-l-4 border-purple-400 pl-6">
+                        <h3 class="font-semibold text-lg mb-2">1. Agent vs RAG Analysis</h3>
+                        <p class="text-gray-700 text-sm">Discuss the critical distinction between an LLM-powered agent and a traditional Retrieval-Augmented Generation (RAG) pipeline. Analyze a complex enterprise problem and explain how an LLM agent's core components would collectively address it more effectively than a RAG system.</p>
+                    </div>
+
+                    <div class="border-l-4 border-blue-400 pl-6">
+                        <h3 class="font-semibold text-lg mb-2">2. Memory Architecture</h3>
+                        <p class="text-gray-700 text-sm">Elaborate on the role of memory in LLM agents. Compare and contrast short-term and long-term memory, providing examples of how each contributes to an agent's ability to solve problems and interact with users over time.</p>
+                    </div>
+
+                    <div class="border-l-4 border-green-400 pl-6">
+                        <h3 class="font-semibold text-lg mb-2">3. Planning Mechanisms</h3>
+                        <p class="text-gray-700 text-sm">Describe the concept of "planning" within an LLM agent, distinguishing between planning without feedback and planning with feedback (reflection/critic). Provide specific examples and explain why feedback mechanisms are crucial for complex tasks.</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Glossary Section -->
+        <section id="glossary" class="content-section">
+            <div class="mb-12">
+                <h1 class="text-4xl font-bold text-center mb-6">Glossary of Key Terms</h1>
+                <p class="text-xl text-center text-gray-600 max-w-4xl mx-auto">Essential terminology for understanding LLM agents and their components</p>
+            </div>
+
+            <!-- Glossary Terms -->
+            <div class="space-y-4">
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">LLM Agent</h3>
+                    <p class="text-gray-700">A system that uses a Large Language Model (LLM) to reason through a problem, create a plan to solve it, and execute the plan with the help of various tools, memory, and planning modules.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Retrieval-Augmented Generation (RAG)</h3>
+                    <p class="text-gray-700">A technique that enhances LLMs by retrieving relevant information from an external knowledge base to generate more informed and context-aware answers.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Agent Core (Agent Brain)</h3>
+                    <p class="text-gray-700">The central coordination module and decision-making unit of an LLM agent, managing its logic, goals, tools, and planning modules.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Memory Module</h3>
+                    <p class="text-gray-700">A component that stores an agent's internal logs, past thoughts, actions, observations, and interactions with users, crucial for maintaining context and learning.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Tools</h3>
+                    <p class="text-gray-700">Well-defined executable workflows or specialized third-party APIs that an LLM agent can use to interact with external environments and execute tasks (e.g., code interpreter, search API).</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Planning Module</h3>
+                    <p class="text-gray-700">A component that enables an LLM agent to break down complex problems into simpler sub-tasks and strategically decide on future actions.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">ReAct</h3>
+                    <p class="text-gray-700">A popular prompting framework that interleaves reasoning (Thought) and acting (Action) steps, receiving feedback from the environment (Observation) to solve complex tasks.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Reflexion</h3>
+                    <p class="text-gray-700">A research framework developed by MIT and Princeton that enables agents to reflect on their past failures and learn from mistakes. The agent maintains a memory of previous attempts and uses this experience to improve future performance through self-reflection and iterative refinement.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">MRKL (Modular Reasoning, Knowledge and Language)</h3>
+                    <p class="text-gray-700">OpenAI's framework for combining large language models with external tools and knowledge bases. MRKL systems can call APIs, use calculators, access databases, and integrate various specialized modules to solve complex tasks that require both reasoning and external information.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Toolformer</h3>
+                    <p class="text-gray-700">Meta's approach to teaching language models when and how to use external tools through self-supervised learning. Unlike other methods, Toolformer learns tool usage without requiring human annotations, automatically discovering which tools to use for different types of problems.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">HuggingGPT</h3>
+                    <p class="text-gray-700">Microsoft's system that uses ChatGPT as a central controller to coordinate multiple AI models from Hugging Face. It can handle complex multimodal tasks by planning which models to use, executing them in sequence, and integrating their outputs to solve sophisticated problems.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Swarm of Agents</h3>
+                    <p class="text-gray-700">A collection of multiple LLM agents working collaboratively in a shared environment to solve complex problems, often used for simulations or multi-faceted tasks.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Multi-modal Agents</h3>
+                    <p class="text-gray-700">LLM agents capable of processing and responding to various types of input data beyond text, such as images, audio, and video.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Prompt Robustness</h3>
+                    <p class="text-gray-700">The ability of an LLM agent's performance to remain stable and reliable despite slight variations or changes in its input prompts.</p>
+                </div>
+
+                <div class="glossary-term">
+                    <h3 class="font-semibold text-lg mb-2">Knowledge Boundary</h3>
+                    <p class="text-gray-700">The scope and limitations of an LLM's internal knowledge, which can affect an agent's behavior and potentially introduce biases or hallucination if not managed effectively.</p>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="bg-gray-900 text-white py-12 mt-16">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="text-center">
+                <div class="flex justify-center items-center gap-3 mb-4">
+                    <div class="w-8 h-8 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
+                        <span class="text-white text-lg font-bold">🤖</span>
+                    </div>
+                    <h3 class="text-xl font-bold">LLM Agents Study Guide</h3>
+                </div>
+                <p class="text-gray-400 mb-6">Comprehensive guide to understanding and building intelligent AI systems</p>
+                <div class="flex justify-center gap-6 text-sm text-gray-400">
+                    <span>© 2024 LLM Agents Guide</span>
+                    <span>•</span>
+                    <span>Educational Resource</span>
+                    <span>•</span>
+                    <span>Open Source</span>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // Navigation functionality
+        document.addEventListener('DOMContentLoaded', function() {
+            const navLinks = document.querySelectorAll('.nav-link');
+            const sections = document.querySelectorAll('.content-section');
+            const mobileNav = document.getElementById('mobile-nav');
+
+            // Function to show a specific section
+            function showSection(sectionId) {
+                console.log('Switching to section:', sectionId);
+
+                // Hide all sections
+                sections.forEach(section => {
+                    section.classList.remove('active');
+                    console.log('Hiding section:', section.id);
+                });
+
+                // Show target section
+                const targetSection = document.getElementById(sectionId);
+                if (targetSection) {
+                    targetSection.classList.add('active');
+                    console.log('Showing section:', sectionId);
+                } else {
+                    console.error('Section not found:', sectionId);
+                    return;
+                }
+
+                // Update nav links
+                navLinks.forEach(link => {
+                    link.classList.remove('active');
+                });
+
+                // Add active class to current nav link
+                const activeLink = document.querySelector(`[data-section="${sectionId}"]`);
+                if (activeLink) {
+                    activeLink.classList.add('active');
+                    console.log('Updated nav link for:', sectionId);
+                } else {
+                    console.warn('Nav link not found for section:', sectionId);
+                }
+
+                // Update mobile nav
+                if (mobileNav) {
+                    mobileNav.value = sectionId;
+                }
+
+                // Scroll to top
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            }
+
+            // Make showSection globally available
+            window.showSection = showSection;
+
+            // Desktop navigation
+            navLinks.forEach(link => {
+                link.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    const sectionId = this.getAttribute('data-section');
+                    showSection(sectionId);
+                });
+            });
+
+            // Mobile navigation
+            if (mobileNav) {
+                mobileNav.addEventListener('change', function() {
+                    showSection(this.value);
+                });
+            }
+
+            // Component interaction functionality
+            const componentCards = document.querySelectorAll('.component-card.interactive-element');
+            const componentDetails = document.querySelectorAll('.component-detail');
+
+            componentCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    const cardId = this.id;
+                    const detailId = cardId.replace('-card', '-detail');
+
+                    // Hide all component details
+                    componentDetails.forEach(detail => {
+                        detail.style.display = 'none';
+                    });
+
+                    // Show selected component detail
+                    const targetDetail = document.getElementById(detailId);
+                    if (targetDetail) {
+                        targetDetail.style.display = 'block';
+                        targetDetail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+
+                    // Update card styles
+                    componentCards.forEach(c => c.classList.remove('ring-2', 'ring-purple-500'));
+                    this.classList.add('ring-2', 'ring-purple-500');
+                });
+            });
+
+            // Initialize with first component detail visible
+            if (componentDetails.length > 0) {
+                componentDetails[0].style.display = 'block';
+                if (componentCards.length > 0) {
+                    componentCards[0].classList.add('ring-2', 'ring-purple-500');
+                }
+            }
+
+            // Smooth scrolling for internal links
+            document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+                anchor.addEventListener('click', function (e) {
+                    e.preventDefault();
+                    const target = document.querySelector(this.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({
+                            behavior: 'smooth',
+                            block: 'start'
+                        });
+                    }
+                });
+            });
+
+            // Add scroll-triggered animations
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            }, observerOptions);
+
+            // Observe elements for animation
+            document.querySelectorAll('.card-hover, .component-card, .quiz-card, .glossary-term').forEach(el => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(20px)';
+                el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                observer.observe(el);
+            });
+
+            // Add tooltip functionality
+            document.querySelectorAll('.tooltip').forEach(tooltip => {
+                tooltip.addEventListener('mouseenter', function() {
+                    const tooltipText = this.getAttribute('data-tooltip');
+                    if (tooltipText) {
+                        this.setAttribute('title', tooltipText);
+                    }
+                });
+            });
+
+            // Progress tracking
+            let currentProgress = 0;
+            const totalSections = sections.length;
+
+            function updateProgress() {
+                const progressPercent = Math.round((currentProgress / totalSections) * 100);
+                // You could add a progress bar here if desired
+                console.log(`Study Progress: ${progressPercent}%`);
+            }
+
+            // Track section visits
+            const visitedSections = new Set();
+            navLinks.forEach(link => {
+                link.addEventListener('click', function() {
+                    const sectionId = this.getAttribute('data-section');
+                    if (!visitedSections.has(sectionId)) {
+                        visitedSections.add(sectionId);
+                        currentProgress = visitedSections.size;
+                        updateProgress();
+                    }
+                });
+            });
+
+            // Initialize
+            showSection('intro');
+        });
+
+        // Copy to clipboard functionality for code blocks
+        document.addEventListener('DOMContentLoaded', function() {
+            const codeBlocks = document.querySelectorAll('.code-block');
+
+            codeBlocks.forEach(block => {
+                // Add copy button
+                const copyButton = document.createElement('button');
+                copyButton.innerHTML = '📋';
+                copyButton.className = 'absolute top-3 right-3 bg-gray-700 hover:bg-gray-600 text-white px-3 py-1 rounded text-xs transition-all duration-200 z-10 opacity-80 hover:opacity-100';
+                copyButton.title = 'Copy to clipboard';
+
+                // Make code block relative positioned
+                block.style.position = 'relative';
+                block.appendChild(copyButton);
+
+                copyButton.addEventListener('click', async function() {
+                    // Get text from code element if it exists, otherwise from the block
+                    const codeElement = block.querySelector('code');
+                    let text = codeElement ? codeElement.textContent : block.textContent;
+
+                    // Clean up the text (remove copy button text and extra whitespace)
+                    text = text.replace('📋', '').replace('✅', '').replace('❌', '').trim();
+
+                    try {
+                        await navigator.clipboard.writeText(text);
+                        copyButton.innerHTML = '✅';
+                        copyButton.style.background = '#10b981';
+                        setTimeout(() => {
+                            copyButton.innerHTML = '📋';
+                            copyButton.style.background = '';
+                        }, 2000);
+                    } catch (err) {
+                        console.error('Failed to copy text: ', err);
+                        copyButton.innerHTML = '❌';
+                        copyButton.style.background = '#ef4444';
+                        setTimeout(() => {
+                            copyButton.innerHTML = '📋';
+                            copyButton.style.background = '';
+                        }, 2000);
+                    }
+                });
+            });
+        });
+    </script>
+</body>
+</html>

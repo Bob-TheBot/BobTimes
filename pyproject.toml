@@ -1,0 +1,49 @@
+[project]
+name = "bobtimes_monorepo"
+description = "BobTimes Monorepo"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "common",
+    "backend",
+    "litellm>=1.75.8",
+    "boto3>=1.40.14",
+    "tenacity>=9.1.2",
+    # Strands Agents SDK for examples
+    "strands-agents",
+    "strands-agents-tools",
+    "opensearch-py>=3.0.0",
+    "faiss-cpu>=1.12.0",
+    "mem0ai>=0.1.117",
+    "duckduckgo-search>=8.1.1",
+    "sentence-transformers>=5.1.0",
+    "numpy>=2.3.3",
+]
+
+[tool.uv.sources]
+common = { workspace = true }
+backend = { workspace = true }
+
+[tool.uv.workspace]
+members = ["libs/*/", "backend", "mcp_demo", "mcp_server"]
+
+[tool.uv]
+package = false
+cache-dir = ".cache"
+dev-dependencies = [
+    "ruff>=0.12.7",
+    "pyright>=1.1.403",
+    "pre-commit>=4.2.0",
+    "httpx>=0.28.1"
+]
+
+
+
+[tool.pyright]
+pythonVersion = "3.13"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+
+[dependency-groups]
+dev = []
