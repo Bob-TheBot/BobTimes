@@ -479,12 +479,6 @@ res = await fetch.execute(FetchFromMemoryParams(topic_key="Best Ai Tools To Crea
 
 > Use these tools directly (as the Researcher agent does) instead of any all-in-one tool abstraction.
 
-### 3.1 Multi-Source Research Tool
-
-Create the file `libs/common/agents/researcher_agent/research_tools.py`:
-
-```python
-"""Research tools for the Researcher Agent."""
 
 import asyncio
 from datetime import datetime
@@ -493,84 +487,6 @@ from typing import Any
 from agents.tools.base_tool import BaseTool
 from core.config_service import ConfigService
 from core.llm_service import LLMService, ModelSpeed
-from core.logging_service import get_logger
-from pydantic import BaseModel, Field
-
-from .research_models import (
-    ResearchRequest, ResearchResult, TopicResearch, ResearchSource,
-    ResearchSourceType, JournalistField
-)
-
-logger = get_logger(__name__)
-
-
-class MultiSourceResearchTool(BaseTool):
-    """Tool for conducting multi-source research across YouTube, web search, and scraping."""
-
-    def __init__(self, config_service: ConfigService | None = None):
-        """Initialize multi-source research tool."""
-        name = "multi_source_research"
-        description = f"""
-Conduct comprehensive research across multiple sources to discover trending topics and gather detailed information.
-
-PARAMETER SCHEMA:
-{ResearchRequest.model_json_schema()}
-
-CORRECT USAGE EXAMPLES:
-# Research trending topics across all fields
-{{"fields": ["technology", "science", "economics"], "topics_per_field": 5, "research_depth": 3}}
-
-# Deep research on technology topics only
-{{"fields": ["technology"], "topics_per_field": 3, "research_depth": 5, "include_youtube": true, "include_web_search": true, "include_scraping": true}}
-
-# Quick trending research without scraping
-{{"fields": ["science"], "topics_per_field": 2, "research_depth": 2, "include_scraping": false}}
-
-RESEARCH SOURCES:
-- YouTube: Video content, transcripts, trending topics from channels
-- Web Search: DuckDuckGo search results for trending topics
-- Web Scraping: Deep content extraction from relevant websites
-
-RESEARCH PROCESS:
-1. Discover trending topics in specified fields
-2. Gather content from multiple sources per topic
-3. Analyze and score topic relevance and trending status
-4. Compile comprehensive research packages
-5. Provide content summaries and key points
-
-RETURNS:
-- topics_researched: List of TopicResearch objects with full data
-- total_sources: Total number of sources gathered
-- research_summary: Overview of research findings
-- fields_covered: Fields that were successfully researched
-
-This tool provides comprehensive research data for editorial decision-making.
-"""
-        super().__init__(name=name, description=description)
-        self.params_model = ResearchRequest
-        self.config_service = config_service or ConfigService()
-        self.llm_service = LLMService(self.config_service)
-
-        # Initialize source-specific tools
-        self._init_source_tools()
-
-    def _init_source_tools(self):
-        """Initialize tools for different research sources."""
-        try:
-            # Import existing tools
-            from utils.youtube_tool import YouTubeReporterTool
-            from agents.reporter_agent.reporter_tools import ReporterSearchTool, ReporterScraperTool
-
-            self.youtube_tool = YouTubeReporterTool(self.config_service)
-            self.search_tool = ReporterSearchTool()
-            self.scraper_tool = ReporterScraperTool()
-
-            logger.info("Research tools initialized successfully")
-        except Exception as e:
-            logger.error(f"Failed to initialize research tools: {e}")
-            self.youtube_tool = None
-            self.search_tool = None
-            self.scraper_tool = None
 
     async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> ResearchResult:
         """Execute multi-source research."""
@@ -641,206 +557,9 @@ This tool provides comprehensive research data for editorial decision-making.
                 )
                 if topic_research:
                     topics.append(topic_research)
-            except Exception as e:
-                logger.error(f"Failed to research topic '{topic_title}': {e}")
-                continue
 
-        return topics
 
-    async def _discover_trending_topics(self, field: JournalistField, params: ResearchRequest) -> list[str]:
-        """Discover trending topics for a field using multiple sources."""
-        trending_topics = []
 
-        # YouTube topic discovery
-        if params.include_youtube and self.youtube_tool:
-            try:
-                youtube_topics = await self._get_youtube_trending_topics(field)
-                trending_topics.extend(youtube_topics)
-            except Exception as e:
-                logger.error(f"YouTube topic discovery failed: {e}")
-
-        # Web search topic discovery
-        if params.include_web_search and self.search_tool:
-            try:
-                search_topics = await self._get_search_trending_topics(field)
-                trending_topics.extend(search_topics)
-            except Exception as e:
-                logger.error(f"Search topic discovery failed: {e}")
-
-        # Remove duplicates and return top topics
-        unique_topics = list(dict.fromkeys(trending_topics))  # Preserve order
-        return unique_topics[:params.topics_per_field * 2]  # Get extra for filtering
-
-    async def _get_youtube_trending_topics(self, field: JournalistField) -> list[str]:
-        """Get trending topics from YouTube channels."""
-        if not self.youtube_tool:
-            return []
-
-        # Get field-specific channel IDs (you'll need to configure these)
-        channel_ids = self._get_field_channels(field)
-
-        from utils.youtube_tool import YouTubeToolParams
-
-        params = YouTubeToolParams(
-            channel_ids=channel_ids,
-            operation="topics",
-            days_back=7,
-            max_videos_per_channel=5
-        )
-
-        result = await self.youtube_tool.execute(params)
-
-        if result.success:
-            return result.topics_extracted
-        else:
-            logger.error(f"YouTube research failed: {result.error}")
-            return []
-
-    async def _get_search_trending_topics(self, field: JournalistField) -> list[str]:
-        """Get trending topics from web search."""
-        if not self.search_tool:
-            return []
-
-        # Create field-specific search queries
-        search_queries = self._get_field_search_queries(field)
-        topics = []
-
-        from agents.reporter_agent.reporter_tools import ReporterSearchParams
-
-        for query in search_queries:
-            try:
-                params = ReporterSearchParams(
-                    query=query,
-                    max_results=10
-                )
-
-                result = await self.search_tool.execute(params)
-
-                if result.success and result.search_results:
-                    # Extract topics from search result titles
-                    for search_result in result.search_results:
-                        topics.append(search_result.title)
-
-            except Exception as e:
-                logger.error(f"Search query '{query}' failed: {e}")
-                continue
-
-        return topics
-
-    async def _research_topic_in_depth(self, topic_title: str, field: JournalistField, params: ResearchRequest) -> TopicResearch | None:
-        """Research a specific topic in depth across multiple sources."""
-        try:
-            sources = []
-
-            # YouTube research
-            if params.include_youtube:
-                youtube_sources = await self._research_topic_youtube(topic_title, field)
-                sources.extend(youtube_sources)
-
-            # Web search research
-            if params.include_web_search:
-                search_sources = await self._research_topic_search(topic_title, field)
-                sources.extend(search_sources)
-
-            # Web scraping research
-            if params.include_scraping and len(sources) > 0:
-                scraping_sources = await self._research_topic_scraping(sources[:3])  # Scrape top 3
-                sources.extend(scraping_sources)
-
-            # Limit sources based on research depth
-            sources = sources[:params.research_depth]
-
-            if not sources:
-                return None
-
-            # Generate topic research summary
-            topic_research = await self._compile_topic_research(
-                topic_title, field, sources, params
-            )
-
-            return topic_research
-
-        except Exception as e:
-            logger.error(f"In-depth research for '{topic_title}' failed: {e}")
-            return None
-
-    def _get_field_channels(self, field: JournalistField) -> list[str]:
-        """Get YouTube channel IDs for a specific field."""
-        # This should be configurable - for now, return sample channels
-        channel_map = {
-            JournalistField.TECHNOLOGY: [
-                "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers
-                "UCXuqSBlHAE6Xw-yeJA0Tunw",  # Linus Tech Tips
-                "UC4QZ_LsYcvcq7qOsOhpAX4A"   # CodeBullet
-            ],
-            JournalistField.SCIENCE: [
-                "UCsXVk37bltHxD1rDPwtNM8Q",  # Kurzgesagt
-                "UC6nSFpj9HTCZ5t-N3Rm3-HA",  # Vsauce
-                "UCHnyfMqiRRG1u-2MsSQLbXA"   # Veritasium
-            ],
-            JournalistField.ECONOMICS: [
-                "UCZ4AMrDcNrfy3X6nsU8-rPg",  # Economics Explained
-                "UCGy6uV7yqGWDeUWTZzT3ZEg"   # Ben Felix
-            ]
-        }
-
-        return channel_map.get(field, [])
-
-    def _get_field_search_queries(self, field: JournalistField) -> list[str]:
-        """Get search queries for discovering trending topics in a field."""
-        query_map = {
-            JournalistField.TECHNOLOGY: [
-                "latest technology news 2024",
-                "AI breakthrough news",
-                "tech industry updates",
-                "software development trends"
-            ],
-            JournalistField.SCIENCE: [
-                "scientific discoveries 2024",
-                "research breakthrough news",
-                "space exploration updates",
-                "medical research news"
-            ],
-            JournalistField.ECONOMICS: [
-                "economic news today",
-                "market analysis 2024",
-                "financial industry updates",
-                "economic policy changes"
-            ]
-        }
-
-        return query_map.get(field, [f"{field.value} news today"])
-```
-
-### 3.2 Research Compilation Methods
-
-Continue the MultiSourceResearchTool with compilation methods:
-
-```python
-    async def _research_topic_youtube(self, topic: str, field: JournalistField) -> list[ResearchSource]:
-        """Research a topic using YouTube sources."""
-        if not self.youtube_tool:
-            return []
-
-        try:
-            from utils.youtube_tool import YouTubeToolParams
-
-            # Search for videos related to the topic
-            channel_ids = self._get_field_channels(field)
-
-            params = YouTubeToolParams(
-                channel_ids=channel_ids,
-                operation="topics",
-                days_back=14,
-                max_videos_per_channel=3
-            )
-
-            result = await self.youtube_tool.execute(params)
-
-            if not result.success:
-                return []
-
-            sources = []
             for detail in result.detailed_results:
                 if topic.lower() in detail.get("title", "").lower():
                     source = ResearchSource(
@@ -850,140 +569,6 @@ Continue the MultiSourceResearchTool with compilation methods:
                         source_type=ResearchSourceType.YOUTUBE_VIDEO,
                         metadata={
                             "channel": detail.get("channel", ""),
-                            "published": detail.get("published", ""),
-                            "views": detail.get("views", 0)
-                        },
-                        relevance_score=0.8  # High relevance for matching topics
-                    )
-                    sources.append(source)
-
-            return sources
-
-        except Exception as e:
-            logger.error(f"YouTube research for '{topic}' failed: {e}")
-            return []
-
-    async def _research_topic_search(self, topic: str, field: JournalistField) -> list[ResearchSource]:
-        """Research a topic using web search."""
-        if not self.search_tool:
-            return []
-
-        try:
-            from agents.reporter_agent.reporter_tools import ReporterSearchParams
-
-            params = ReporterSearchParams(
-                query=f"{topic} {field.value} news",
-                max_results=5
-            )
-
-            result = await self.search_tool.execute(params)
-
-            if not result.success:
-                return []
-
-            sources = []
-            for search_result in result.search_results:
-                source = ResearchSource(
-                    url=search_result.url,
-                    title=search_result.title,
-                    summary=search_result.snippet,
-                    source_type=ResearchSourceType.WEB_SEARCH,
-                    metadata={
-                        "search_query": params.query,
-                        "rank": len(sources) + 1
-                    },
-                    relevance_score=0.7  # Good relevance for search results
-                )
-                sources.append(source)
-
-            return sources
-
-        except Exception as e:
-            logger.error(f"Search research for '{topic}' failed: {e}")
-            return []
-
-    async def _research_topic_scraping(self, sources: list[ResearchSource]) -> list[ResearchSource]:
-        """Research topics by scraping content from existing sources."""
-        if not self.scraper_tool:
-            return []
-
-        scraped_sources = []
-
-        for source in sources:
-            try:
-                from agents.reporter_agent.reporter_tools import ReporterScraperParams
-
-                params = ReporterScraperParams(
-                    url=source.url,
-                    max_content_length=2000
-                )
-
-                result = await self.scraper_tool.execute(params)
-
-                if result.success and result.scraped_content:
-                    scraped_source = ResearchSource(
-                        url=source.url,
-                        title=f"Scraped: {source.title}",
-                        summary=result.scraped_content[:300] + "...",
-                        source_type=ResearchSourceType.WEB_SCRAPE,
-                        content=result.scraped_content,
-                        metadata={
-                            "original_source_type": source.source_type.value,
-                            "content_length": len(result.scraped_content)
-                        },
-                        relevance_score=0.9  # High relevance for scraped content
-                    )
-                    scraped_sources.append(scraped_source)
-
-            except Exception as e:
-                logger.error(f"Scraping failed for {source.url}: {e}")
-                continue
-
-        return scraped_sources
-
-    async def _compile_topic_research(self, topic_title: str, field: JournalistField, sources: list[ResearchSource], params: ResearchRequest) -> TopicResearch:
-        """Compile comprehensive research data for a topic."""
-        try:
-            # Generate topic description using LLM
-            topic_description = await self._generate_topic_description(topic_title, sources)
-
-            # Extract keywords
-            keywords = await self._extract_keywords(topic_title, sources)
-
-            # Generate content summary
-            content_summary = await self._generate_content_summary(sources)
-
-            # Extract key points
-            key_points = await self._extract_key_points(sources)
-
-            # Calculate trending score
-            trending_score = self._calculate_trending_score(sources)
-
-            return TopicResearch(
-                topic_title=topic_title,
-                topic_description=topic_description,
-                field=field,
-                keywords=keywords,
-                sources=sources,
-                content_summary=content_summary,
-                key_points=key_points,
-                trending_score=trending_score,
-                research_depth=len(sources)
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to compile research for '{topic_title}': {e}")
-            # Return basic research object
-            return TopicResearch(
-                topic_title=topic_title,
-                topic_description=f"Research on {topic_title}",
-                field=field,
-                sources=sources,
-                content_summary="Research compilation failed",
-                key_points=[],
-                trending_score=0.5,
-                research_depth=len(sources)
-            )
 
     async def _generate_topic_description(self, topic_title: str, sources: list[ResearchSource]) -> str:
         """Generate a comprehensive topic description using LLM."""
@@ -1064,343 +649,46 @@ Provide a comprehensive summary that captures the main points and significance."
         try:
             source_content = []
             for source in sources[:3]:  # Use top 3 sources
-                content = source.content or source.summary
-                source_content.append(f"{source.title}: {content}")
 
-            combined_content = "\n\n".join(source_content)
 
-            prompt = f"""Extract 3-5 key points from the following research content. Each point should be a concise, factual statement:
 
-{combined_content}
+## 🤖 Step 4: Create the Researcher Agent (current implementation)
 
-Format as a simple list of key points."""
+- Recommended: Use AgentFactory and the built-in ResearcherToolRegistry. No custom multi-source tool is required.
+- Tools available to the Researcher (from the registry): search, scrape, youtube_search, fetch_from_memory
+- Key files:
+  - libs/common/agents/researcher_agent/researcher_tools.py (tool classes + registry)
+  - libs/common/agents/researcher_agent/researcher_prompt.py (system + tool prompts)
+  - libs/common/agents/researcher_agent/researcher_executor.py (execution flow, saving to memory)
+  - libs/common/agents/shared_memory_store.py (SharedMemoryStore)
 
-            response = await self.llm_service.generate_text(
-                prompt=prompt,
-                model_speed=ModelSpeed.FAST,
-                max_tokens=200
-            )
-
-            # Parse response into list
-            key_points = [point.strip().lstrip('- ').lstrip('• ') for point in response.split('\n') if point.strip()]
-            return key_points[:5]  # Return max 5 points
-
-        except Exception as e:
-            logger.error(f"Failed to extract key points: {e}")
-            return ["Key research findings available"]
-
-    def _calculate_trending_score(self, sources: list[ResearchSource]) -> float:
-        """Calculate trending score based on source characteristics."""
-        try:
-            if not sources:
-                return 0.0
-
-            score = 0.0
-
-            # Base score from number of sources
-            score += min(len(sources) * 0.1, 0.5)
-
-            # Score from source types (YouTube and recent content scores higher)
-            for source in sources:
-                if source.source_type == ResearchSourceType.YOUTUBE_VIDEO:
-                    score += 0.2
-                elif source.source_type == ResearchSourceType.WEB_SCRAPE:
-                    score += 0.15
-                else:
-                    score += 0.1
-
-            # Score from recency (sources from last 7 days get bonus)
-            recent_sources = [s for s in sources if (datetime.now() - s.accessed_at).days <= 7]
-            score += len(recent_sources) * 0.05
-
-            return min(score, 1.0)  # Cap at 1.0
-
-        except Exception as e:
-            logger.error(f"Failed to calculate trending score: {e}")
-            return 0.5
-
-    async def _generate_research_summary(self, topics: list[TopicResearch], total_sources: int, duration: float) -> str:
-        """Generate overall research summary."""
-        try:
-            field_counts = {}
-            for topic in topics:
-                field_counts[topic.field.value] = field_counts.get(topic.field.value, 0) + 1
-
-            top_trending = sorted(topics, key=lambda t: t.trending_score, reverse=True)[:3]
-
-            summary = f"""Research completed in {duration:.1f} seconds.
-
-Found {len(topics)} trending topics across {len(field_counts)} fields.
-Gathered {total_sources} sources total.
-
-Field breakdown: {', '.join(f'{field}: {count}' for field, count in field_counts.items())}
-
-Top trending topics:
-{chr(10).join(f'- {topic.topic_title} (score: {topic.trending_score:.2f})' for topic in top_trending)}"""
-
-            return summary
-
-        except Exception as e:
-            logger.error(f"Failed to generate research summary: {e}")
-            return f"Research completed: {len(topics)} topics, {total_sources} sources"
-```
-
-## 🤖 Step 4: Create the Researcher Agent
-
-### 4.1 Create Researcher Agent Main Class
-
-Create the file `libs/common/agents/researcher_agent/researcher_agent_main.py`:
-
-```python
-"""Main Researcher Agent implementation."""
-
-from agents.agent_config import AgentConfig
-from agents.base_agent import BaseAgent
-from agents.types import AgentType
+Example: create a Researcher via AgentFactory
+<augment_code_snippet mode="EXCERPT">
+````python
+from libs.common.agents.agent_factory import AgentFactory
+from libs.common.agents.types import JournalistField
 from core.config_service import ConfigService
-from core.llm_service import ModelSpeed
-from core.logging_service import get_logger
 
-from .research_tools import MultiSourceResearchTool
+config = ConfigService()
+factory = AgentFactory(config)
 
-logger = get_logger(__name__)
+# Pick a field for the researcher; optional sub_section can be provided
+researcher = factory.create_researcher(JournalistField.TECHNOLOGY)
 
+# The Researcher uses search/scrape/youtube_search/fetch_from_memory tools internally
+# per researcher_prompt.py and researcher_executor.py
+````
+</augment_code_snippet>
 
-class ResearcherAgent(BaseAgent):
-    """Researcher Agent specialized in topic discovery and content gathering."""
-
-    def __init__(self, config_service: ConfigService):
-        """Initialize the Researcher Agent."""
-
-        # Create agent configuration
-        config = AgentConfig(
-            system_prompt=self._get_system_prompt(),
-            temperature=0.3,  # Lower temperature for more focused research
-            default_model_speed=ModelSpeed.FAST,  # Fast for research tasks
-            tools=[
-                MultiSourceResearchTool(config_service)
-            ]
-        )
-
-        super().__init__(
-            agent_type=AgentType.RESEARCHER,
-            config=config,
-            config_service=config_service
-        )
-
-        logger.info("Researcher Agent initialized")
-
-    def _get_system_prompt(self) -> str:
-        """Get the system prompt for the Researcher Agent."""
-        return """
-You are the Researcher Agent for BobTimes, an AI-powered newspaper. Your primary responsibility is discovering trending topics and gathering comprehensive research data for editorial decision-making.
-
-## CORE RESPONSIBILITIES:
-
-### 1. Topic Discovery
-- Identify trending topics across technology, science, and economics
-- Monitor multiple sources: YouTube channels, web search, news sites
-- Focus on current, newsworthy topics with broad appeal
-- Prioritize topics with high engagement and relevance
-
-### 2. Content Gathering
-- Collect detailed information from multiple sources per topic
-- Gather YouTube video content, transcripts, and metadata
-- Perform web searches for comprehensive coverage
-- Scrape relevant websites for in-depth content
-- Compile sources with proper attribution and metadata
-
-### 3. Research Analysis
-- Analyze topic trending scores and relevance
-- Extract key points and insights from gathered content
-- Generate comprehensive topic summaries
-- Identify keywords and themes
-- Assess newsworthiness and editorial value
-
-### 4. Research Packaging
-- Compile research into structured TopicResearch objects
-- Provide content summaries and key points
-- Include source attribution and metadata
-- Calculate trending scores and relevance metrics
-- Prepare research packages for editorial review
-
-## RESEARCH WORKFLOW:
-
-1. **Discovery Phase**: Use multi_source_research tool to find trending topics
-2. **Gathering Phase**: Collect content from YouTube, search, and scraping
-3. **Analysis Phase**: Analyze content for key insights and relevance
-4. **Compilation Phase**: Package research into structured format
-5. **Delivery Phase**: Provide comprehensive research to Editor Agent
-
-## RESEARCH QUALITY STANDARDS:
-
-- **Accuracy**: Verify information across multiple sources
-- **Relevance**: Focus on topics with broad audience appeal
-- **Timeliness**: Prioritize recent and trending content
-- **Depth**: Gather sufficient detail for informed editorial decisions
-- **Attribution**: Properly cite all sources and maintain metadata
-
-## AVAILABLE TOOLS:
-
-- **multi_source_research**: Comprehensive research across YouTube, web search, and scraping
-
-## COMMUNICATION STYLE:
-
-- Provide clear, structured research summaries
-- Include quantitative metrics (trending scores, source counts)
-- Highlight key insights and editorial opportunities
-- Maintain objective, factual tone
-- Focus on actionable research findings
-
-Your research directly impacts editorial decisions and story quality. Prioritize thoroughness, accuracy, and editorial value in all research activities.
-"""
-
-    async def research_trending_topics(self, fields: list[str], topics_per_field: int = 5) -> dict:
-        """Research trending topics across specified fields."""
-        try:
-            from .research_models import ResearchRequest, JournalistField
-
-            # Convert string fields to enum
-            field_enums = []
-            for field_str in fields:
-                try:
-                    field_enums.append(JournalistField(field_str))
-                except ValueError:
-                    logger.warning(f"Invalid field: {field_str}")
-                    continue
-
-            if not field_enums:
-                return {
-                    "success": False,
-                    "error": "No valid fields provided"
-                }
-
-            # Create research request
-            request = ResearchRequest(
-                fields=field_enums,
-                topics_per_field=topics_per_field,
-                research_depth=3,
-                include_youtube=True,
-                include_web_search=True,
-                include_scraping=True
-            )
-
-            # Execute research
-            result = await self.tools[0].execute(request)
-
-            if result.success:
-                return {
-                    "success": True,
-                    "topics_researched": [topic.model_dump() for topic in result.topics_researched],
-                    "total_sources": result.total_sources,
-                    "research_summary": result.research_summary,
-                    "fields_covered": [field.value for field in result.fields_covered],
-                    "research_duration": result.research_duration
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": result.error
-                }
-
-        except Exception as e:
-            logger.error(f"Research trending topics failed: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-    async def deep_research_topic(self, topic_title: str, field: str) -> dict:
-        """Conduct deep research on a specific topic."""
-        try:
-            from .research_models import ResearchRequest, JournalistField
-
-            field_enum = JournalistField(field)
-
-            # Create focused research request
-            request = ResearchRequest(
-                fields=[field_enum],
-                topics_per_field=1,
-                research_depth=5,  # Deep research
-                include_youtube=True,
-                include_web_search=True,
-                include_scraping=True,
-                trending_only=False  # Include all relevant content
-            )
-
-            # Execute research
-            result = await self.tools[0].execute(request)
-
-            if result.success and result.topics_researched:
-                # Find the most relevant topic
-                best_match = None
-                best_score = 0
-
-                for topic in result.topics_researched:
-                    # Simple relevance scoring based on title similarity
-                    score = self._calculate_title_similarity(topic_title, topic.topic_title)
-                    if score > best_score:
-                        best_score = score
-                        best_match = topic
-
-                if best_match:
-                    return {
-                        "success": True,
-                        "topic_research": best_match.model_dump(),
-                        "relevance_score": best_score
-                    }
-
-            return {
-                "success": False,
-                "error": "No relevant research found for the topic"
-            }
-
-        except Exception as e:
-            logger.error(f"Deep research failed: {e}")
-            return {
-                "success": False,
-                "error": str(e)
-            }
-
-    def _calculate_title_similarity(self, title1: str, title2: str) -> float:
-        """Calculate simple similarity between two titles."""
-        words1 = set(title1.lower().split())
-        words2 = set(title2.lower().split())
-
-        if not words1 or not words2:
-            return 0.0
-
-        intersection = words1.intersection(words2)
-        union = words1.union(words2)
-
-        return len(intersection) / len(union) if union else 0.0
-```
-
-### 4.2 Create Researcher Agent Factory Integration
-
-Update the agent factory to include the Researcher Agent. Add to `libs/common/agents/agent_factory.py`:
-
-```python
-# Add import
-from agents.researcher_agent.researcher_agent_main import ResearcherAgent
-
-# Add to AgentFactory class
-def create_researcher(self) -> ResearcherAgent:
-    """Create a Researcher Agent instance."""
-    return ResearcherAgent(self.config_service)
-```
-
-### 4.3 Update Agent Types
-
-Add the researcher agent type to `libs/common/agents/types.py`:
-
-```python
-class AgentType(StrEnum):
-    """Types of agents in the system."""
-    EDITOR = "editor"
-    REPORTER = "reporter"
-    RESEARCHER = "researcher"  # Add this line
-```
+Tip: Inspect the prompt to see exactly how the tools are orchestrated during research:
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_prompt.py" mode="EXCERPT">
+````python
+## PHASE: RESEARCH
+- Use youtube_search, search, and scrape tools to gather information
+- Save sources to SharedMemoryStore under clear, reusable topic keys
+- Return a ResearchResult when research is sufficient
+````
+</augment_code_snippet>
 
 ## 🔄 Step 5: Update Editor Agent for Three-Agent Workflow
 
@@ -1769,9 +1057,9 @@ Your role is crucial in maintaining editorial quality and ensuring the newspaper
 
 
 
-## 🔧 Step 7: Update Reporter Agent for Research-Based Writing
+## 🔧 Step 6: Update Reporter Agent for Research-Based Writing
 
-### 7.1 Create Research-Based Story Writing Tool
+### 6.1 Create Research-Based Story Writing Tool
 
 Create the file `libs/common/agents/reporter_agent/research_story_tool.py`:
 
@@ -2197,7 +1485,7 @@ Headline:"""
             return 0.5
 ```
 
-### 7.2 Update Reporter Agent System Prompt
+### 6.2 Update Reporter Agent System Prompt
 
 Update the Reporter Agent to work with research-based assignments. Modify the system prompt:
 
@@ -2281,9 +1569,9 @@ Your stories should demonstrate deep understanding of the research while creatin
 ```
 
 
-## 🎯 Step 9: Integration with Full Newspaper Generation
+## 🎯 Step 7: Integration with Full Newspaper Generation
 
-### 9.1 Workflow Outline (no full script)
+### 7.1 Workflow Outline (no full script)
 
 - Phase 1 — Researcher: discover trending topics per field, aggregate multi-source research, save to SharedMemoryStore
 - Phase 2 — Editor: review research results, filter against forbidden topics, select topics, add notes and priorities
@@ -2294,7 +1582,7 @@ Note:
 - Reporter uses only fetch_from_memory and use_llm (no search/scrape/YouTube)
 - All memory access is via our SharedMemoryStore
 
-### 9.2 Minimal code snippets (guidance only)
+### 7.2 Minimal code snippets (guidance only)
 
 Create agents:
 ```python
@@ -2330,7 +1618,7 @@ use_llm = next(t for t in reporter.tools if t.name == "use_llm")
 draft = await use_llm.execute(UseLLMParams(prompt="Write a 200-word news brief summarizing the research."))
 ```
 
-## 🏆 Step 10: Lab Summary and Best Practices (Concise)
+## 🏆 Step 8: Lab Summary and Best Practices (Concise)
 
 Architecture at a glance
 - Researcher: multi-source research, topic discovery, saves results to SharedMemoryStore
