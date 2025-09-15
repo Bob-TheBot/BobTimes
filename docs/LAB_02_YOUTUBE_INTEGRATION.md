@@ -2,47 +2,51 @@
 
 Welcome to Lab 2! In this lab, you'll extend the BobTimes system by adding YouTube as a new data source and implementing a sophisticated memory-first architecture. You'll learn how to create custom tools, integrate external APIs, and build intelligent content retrieval systems.
 
-## 🎉 Implementation Status: COMPLETED ✅
+## 🎯 Goal
 
-This lab has been **fully implemented** with the following features:
-- ✅ **YouTube Reporter Tool** (`libs/common/utils/youtube_tool.py`)
-- ✅ **YouTube Service** (`libs/common/utils/youtube_service.py`)
-- ✅ **YouTube Data Models** (`libs/common/utils/youtube_models.py`)
-- ✅ **Reporter Integration** (YouTube tool registered in `ReporterToolRegistry`)
-- ✅ **Configuration** (Field-based channel configuration in `.env.development`)
-- ✅ **Complete Implementation** (All components fully integrated)
-- ✅ **Two Operation Modes**: Topic extraction and video transcription
-- ✅ **Transcript-Only Mode**: Works without YouTube API quota
-- ✅ **Source Tracking**: Automatic `StorySource` creation for news attribution
+Build a YouTube-powered research pipeline for BobTimes that discovers recent videos from configured channels, extracts topics, and provides transcript-backed sources to the reporter agent. You will also enable a memory-first workflow so reporters can reuse validated research instantly.
 
-## 🧠 NEW: Memory-First Architecture & Intelligent Content Retrieval
+## 📦 What you’ll build
+- A production-ready YouTube service and reporter tool
+- A shared in-memory store of topics and sources for cross-agent reuse
+- A fetch_from_memory tool so reporters can pull research by topic key
+- Reporter prompt guidance to prefer memory before doing fresh searches
 
-**⚠️ WORKSHOP PARTICIPANTS: The following sections represent NEW requirements that you'll need to implement:**
+## 🚀 At a glance: run it now
+Using the built-in ReporterToolRegistry and YouTube tool:
 
-### 🎯 Enhanced Lab Objectives (NEW)
+```python
+import asyncio
+from agents.reporter_agent.reporter_tools import ReporterToolRegistry
+from utils.youtube_tool import YouTubeToolParams, YouTubeField
+async def main():
+    reg = ReporterToolRegistry()
+    tool = reg.tools["youtube_search"]
+    res = await tool.execute(YouTubeToolParams(field=YouTubeField.TECHNOLOGY, max_videos_per_channel=1, days_back=7))
+    print(res.success, res.topics_extracted[:3], len(res.sources))
+asyncio.run(main())
+```
 
-In addition to YouTube integration, you'll now implement:
-- 🔧 **Unified Tool Results**: Create a standardized `UnifiedToolResult` class for all tools
-- 🧠 **SharedMemoryStore**: Implement in-memory topic storage for cross-agent communication
-- ✅ **Content Validation**: Ensure all topics have sufficient content before storage
-- 🔄 **Content Enhancement**: Use scraper tool as fallback when search results lack content
-- 📝 **Memory-First Reporter**: Reporters intelligently fetch from memory before searching
-- 🏷️ **Topic Normalization**: Consistent topic naming across all tools
-- 🎯 **Smart Topic Matching**: Reporters match assigned topics to memory keys intelligently
+Fetching previously discovered research from memory:
+
+```python
+import asyncio
+from agents.reporter_agent.reporter_tools import ReporterToolRegistry, FetchFromMemoryParams
+async def main():
+    reg = ReporterToolRegistry()
+    tool = reg.tools["fetch_from_memory"]
+    res = await tool.execute(FetchFromMemoryParams(topic_key="Best Ai Tools To Create Viral Content", field="technology"))
+    print(res.success, res.sources_count)
+asyncio.run(main())
+```
 
 ## 🎯 Lab Objectives
-
 By the end of this lab, you will:
-- ✅ Create a YouTube tool that accepts user-provided channel lists
-- ✅ Extract recent video titles for topic discovery
-- ✅ Implement selective video transcription for content generation
-- ✅ Integrate the tool into the reporter agent workflow
-- ✅ Understand the complete workflow: channels → topics → transcripts → content
-- ✅ Understand how to extend the system with new data sources
-- 🧠 **NEW**: Implement SharedMemoryStore for cross-agent communication
-- 🔧 **NEW**: Create fetch_from_memory tool for intelligent content retrieval
-- 🎯 **NEW**: Build memory-first reporter workflow with smart topic matching
-- ✅ **NEW**: Implement unified tool results architecture
+- Create a YouTube tool that accepts field/subsection channel lists and/or direct channel IDs
+- Discover recent videos and extract topics (only videos with transcripts are returned)
+- Produce transcript-backed StorySource objects for use by reporters
+- Integrate the tool into the reporter agent workflow via ReporterToolRegistry
+- Implement and use SharedMemoryStore and fetch_from_memory in a memory-first flow
 
 ## 📋 Prerequisites
 
@@ -81,23 +85,12 @@ This lab introduces a sophisticated **memory-first architecture** that revolutio
 - **🧠 Intelligence**: Smart topic matching handles naming variations
 - **🔄 Fallback**: Graceful degradation to fresh search when needed
 
-## 🎯 Two Implementation Modes
-
-This lab supports two modes of operation:
-
-### 🔓 **Transcript-Only Mode (No API Key Required)**
-- ✅ Extract transcripts from specific video IDs
-- ✅ Full reporter agent integration
-- ✅ Source tracking for news generation
-- ❌ Cannot discover new videos from channels
-- ❌ Cannot browse channel content
-
-### 🔑 **Full Mode (API Key Required)**
-- ✅ All transcript-only features
-- ✅ Discover recent videos from YouTube channels
-- ✅ Browse channel content by field (technology, science, etc.)
-- ✅ Automatic topic extraction from video titles
-- ⚠️ Subject to YouTube API quota limits (10,000 units/day free)
+## 🧾 How transcripts are handled
+- The YouTube tool currently exposes a single operation: "topics".
+- It returns only videos that have transcripts available and embeds the transcript text into each source for story writing.
+- Results are provided as a UnifiedToolResult (topics_extracted, sources, topic_source_mapping, metadata, summary).
+- A YouTube Data API key is required to search channels; transcript fetching uses youtube-transcript-api.
+- Control freshness and breadth via days_back and max_videos_per_channel in YouTubeToolParams.
 
 ## 🚀 Step 1: Setup YouTube Data API
 
@@ -166,29 +159,23 @@ youtube:
 
 ```bash
 # In libs/.env.development
-# Add YouTube configuration
-YOUTUBE_ENABLED=true
-YOUTUBE_MAX_VIDEOS_PER_CHANNEL=1
-YOUTUBE_DAYS_BACK=7
-YOUTUBE_CONCURRENT_REQUESTS=3
-YOUTUBE_REQUEST_DELAY_MS=100
+# YouTube channel configuration (comma-separated channel IDs or URLs)
+# Prefer direct channel IDs (UCxxxxxxxxxxxxxxxxxxxxxx). Usernames (@channel) will be resolved via API.
 
-# YouTube Channel Configuration (comma-separated channel IDs)
-# 🎯 IMPORTANT: Use direct channel IDs to avoid API quota for username resolution
-# Format: Just the channel ID (UCxxxxx) or full URL with channel ID
+# Field-level channels
+YOUTUBE_CHANNELS_TECHNOLOGY="UCXuqSBlHAE6Xw-yeJA0Tunw,UCBJycsmduvYEL83R_U4JriQ"
+YOUTUBE_CHANNELS_SCIENCE="UCsXVk37bltHxD1rDPwtNM8Q,UCHnyfMqiRRG1u-2MsSQLbXA"
+YOUTUBE_CHANNELS_ECONOMICS="UCZ4AMrDcNrfy3X6nsU8-rPg"
 
-# Technology channels - using direct channel IDs to avoid API quota
-YOUTUBE_CHANNELS_TECHNOLOGY="UCXuqSBlHAE6Xw-yeJA0Tunw,UC8QMvQrV1bsK7WO37QpSxSg,UCBJycsmduvYEL83R_U4JriQ"
-
-# Science channels - using direct channel IDs to avoid API quota
-YOUTUBE_CHANNELS_SCIENCE="UCsXVk37bltHxD1rDPwtNM8Q,UC6nSFpj9HTCZ5t-N3Rm3-HA,UCHnyfMqiRRG1u-2MsSQLbXA"
-
-# Economics channels - using direct channel IDs to avoid API quota
-YOUTUBE_CHANNELS_ECONOMICS="UCZ4AMrDcNrfy3X6nsU8-rPg,UCDXTQ8nWmx_EhZ2v-kp7QxA"
-
-# Sports channels (optional)
-YOUTUBE_CHANNELS_SPORTS="UCqFMzb-4AUf6WAIbhOJ5P8w,UCWWbZ8z9GwvbR_7NUjNYJdw"
+# Optional: subsection-specific channels (take priority when provided)
+# Pattern: YOUTUBE_CHANNELS_{FIELD}_{SUBSECTION}
+YOUTUBE_CHANNELS_TECHNOLOGY_AI_TOOLS="UCabcdefabcdefabcdefabcd,UCdefabcdefabcdefabcdefab"
 ```
+
+Notes:
+- The service reads env keys like youtube_channels_technology (mapped from YOUTUBE_CHANNELS_TECHNOLOGY) via ConfigService.
+- Subsection keys (e.g., YOUTUBE_CHANNELS_TECHNOLOGY_AI_TOOLS) override the field list when subsection is specified in YouTubeToolParams.
+- You can mix channel IDs and full URLs; IDs avoid extra quota for username resolution.
 
 **💡 Channel ID vs Username URLs:**
 - ✅ **Direct Channel IDs** (like `UCXuqSBlHAE6Xw-yeJA0Tunw`) - No API quota for resolution
