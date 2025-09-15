@@ -10,7 +10,7 @@ By the end of this lab, you will:
 - ✅ Integrate YouTube, DuckDuckGo, and web scraping capabilities
 - ✅ Design a new three-agent editorial workflow
 - ✅ Build research data models and content aggregation
-- ✅ Test the complete research-to-publication pipeline
+
 
 ## 📋 Prerequisites
 
@@ -99,7 +99,7 @@ class ResearchSource(BaseModel):
     metadata: dict[str, Any] = Field(default_factory=dict, description="Additional metadata")
     relevance_score: float = Field(default=0.0, description="Relevance score (0-1)")
     accessed_at: datetime = Field(default_factory=datetime.now, description="When source was accessed")
-    
+
     def to_story_source(self) -> StorySource:
         """Convert to StorySource for compatibility."""
         return StorySource(
@@ -122,11 +122,11 @@ class TopicResearch(BaseModel):
     trending_score: float = Field(default=0.0, description="Trending score (0-1)")
     research_depth: int = Field(default=0, description="Number of sources researched")
     research_timestamp: datetime = Field(default_factory=datetime.now, description="When research was conducted")
-    
+
     def get_sources_by_type(self, source_type: ResearchSourceType) -> list[ResearchSource]:
         """Get sources filtered by type."""
         return [source for source in self.sources if source.source_type == source_type]
-    
+
     def get_total_content_length(self) -> int:
         """Get total length of all content."""
         return sum(len(source.content or "") for source in self.sources)
@@ -153,11 +153,11 @@ class ResearchResult(BaseModel):
     fields_covered: list[ReporterField] = Field(default_factory=list, description="Fields that were researched")
     research_duration: float = Field(default=0.0, description="Research duration in seconds")
     error: Optional[str] = Field(None, description="Error message if failed")
-    
+
     def get_topics_by_field(self, field: ReporterField) -> list[TopicResearch]:
         """Get topics filtered by field."""
         return [topic for topic in self.topics_researched if topic.field == field]
-    
+
     def get_top_trending_topics(self, limit: int = 10) -> list[TopicResearch]:
         """Get top trending topics across all fields."""
         return sorted(self.topics_researched, key=lambda t: t.trending_score, reverse=True)[:limit]
@@ -200,10 +200,58 @@ In the remaining steps, we will:
 - Implement multi-source research aggregation
 - Update the Editor Agent to work with research data
 - Modify the Reporter Agent to write from research
-- Test the complete three-agent workflow
+
 - Create research management utilities
 
 Ready to build the intelligent research system!
+
+
+To align with the finalized implementation:
+
+- Reporter Agent toolset is restricted to memory-only operations: `fetch_from_memory` and `use_llm`.
+- Reporter does not have research tools (no search, scrape, or YouTube).
+- All memory access goes through our own `SharedMemoryStore`.
+- Intelligent topic matching is built into `fetch_from_memory`.
+
+### Shared Memory Access (project-native)
+
+```python
+# Access the global shared memory store
+from libs.common.agents.shared_memory_store import get_shared_memory_store
+store = get_shared_memory_store()
+store.list_topics("technology")  # e.g., ["openai-o4o-launch", "gemini-2.5-updates", ...]
+```
+
+### Enhanced fetch_from_memory parameters
+
+```python
+# Pydantic params (conceptual snippet)
+class FetchFromMemoryParams(BaseModel):
+    field: str
+    topic_key: str | None = None
+    topic_query: str | None = None  # used for intelligent matching when key is unknown
+```
+
+### Usage examples
+
+```python
+# 1) Unknown exact key → use topic_query for intelligent matching
+params = FetchFromMemoryParams(field="technology", topic_query="viral AI content creation tools")
+result = await fetch_tool.execute(params)
+# result.topic_key is the resolved memory key; result.content_summary contains the summary
+
+# 2) Known exact key → pass topic_key directly
+params = FetchFromMemoryParams(field="technology", topic_key="openai-o4o-launch")
+result = await fetch_tool.execute(params)
+```
+
+### Guidelines
+
+- Prefer `topic_key` when you know the exact memory key set by the Researcher/Editor.
+- Use `topic_query` when only a human-friendly assignment string is available; the tool will pick the best match.
+- On low-confidence matches, the tool surfaces suggestions; align future assignments to consistent memory keys to improve reliability.
+
+
 
 ## 🛠️ Step 3: Create Researcher Agent Tools
 
@@ -1495,298 +1543,7 @@ Your role is crucial in maintaining editorial quality and ensuring the newspaper
 """
 ```
 
-## 🧪 Step 6: Create Three-Agent Workflow Tests
 
-### 6.1 Create Complete Workflow Test
-
-Create the file `test_three_agent_workflow.py`:
-
-```python
-"""Test the complete three-agent workflow: Researcher → Editor → Reporter."""
-
-import asyncio
-from datetime import datetime
-
-from agents.agent_factory import AgentFactory
-from agents.researcher_agent.research_models import ResearchRequest, EditorialReviewRequest
-from agents.types import ReporterField
-from core.config_service import ConfigService
-from utils.forbidden_topics_tool import ForbiddenTopicsTool
-
-
-async def test_complete_three_agent_workflow():
-    """Test the complete workflow from research to publication."""
-    print("🔄 Three-Agent Workflow Test")
-    print("=" * 50)
-
-    config_service = ConfigService()
-    factory = AgentFactory(config_service)
-
-    # Create all three agents
-    researcher = factory.create_researcher()
-    editor = factory.create_editor()
-    reporter_tech = factory.create_reporter(ReporterField.TECHNOLOGY)
-
-    print("✅ Created Researcher, Editor, and Reporter agents")
-
-    # Step 1: Researcher discovers and researches topics
-    print("\n1️⃣ RESEARCH PHASE: Discovering trending topics...")
-
-    research_result = await researcher.research_trending_topics(
-        fields=["technology", "science"],
-        topics_per_field=3
-    )
-
-    if research_result["success"]:
-        print(f"   📊 Research completed in {research_result['research_duration']:.1f}s")
-        print(f"   📋 Found {len(research_result['topics_researched'])} topics")
-        print(f"   🔍 Gathered {research_result['total_sources']} sources")
-
-        # Show sample topics
-        for i, topic_data in enumerate(research_result["topics_researched"][:2]):
-            print(f"   📰 Topic {i+1}: {topic_data['topic_title']}")
-            print(f"      Field: {topic_data['field']}")
-            print(f"      Trending Score: {topic_data['trending_score']:.2f}")
-            print(f"      Sources: {len(topic_data['sources'])}")
-    else:
-        print(f"   ❌ Research failed: {research_result['error']}")
-        return
-
-    # Step 2: Editor reviews research and makes editorial decisions
-    print("\n2️⃣ EDITORIAL PHASE: Reviewing research and selecting topics...")
-
-    # Get forbidden topics first
-    forbidden_tool = ForbiddenTopicsTool(config_service)
-    forbidden_params = {
-        "operation": "get_forbidden",
-        "field": "technology",
-        "days_back": 30
-    }
-
-    from utils.forbidden_topics_tool import ForbiddenTopicsParams
-    forbidden_result = await forbidden_tool.execute(
-        ForbiddenTopicsParams(**forbidden_params)
-    )
-
-    forbidden_topics = forbidden_result.forbidden_topics if forbidden_result.success else []
-    print(f"   🚫 Found {len(forbidden_topics)} forbidden topics")
-
-    # Convert research result back to proper format for editorial review
-    from agents.researcher_agent.research_models import ResearchResult, TopicResearch
-
-    topics_researched = []
-    for topic_data in research_result["topics_researched"]:
-        topic = TopicResearch(**topic_data)
-        topics_researched.append(topic)
-
-    research_obj = ResearchResult(
-        success=True,
-        topics_researched=topics_researched,
-        total_sources=research_result["total_sources"],
-        research_summary=research_result["research_summary"],
-        fields_covered=[ReporterField(f) for f in research_result["fields_covered"]],
-        research_duration=research_result["research_duration"]
-    )
-
-    # Editorial review
-    review_request = EditorialReviewRequest(
-        research_result=research_obj,
-        forbidden_topics=forbidden_topics,
-        priority_fields=[ReporterField.TECHNOLOGY],
-        max_topics_to_select=2
-    )
-
-    # Use the editorial research review tool
-    editorial_tool = None
-    for tool in editor.tools:
-        if tool.name == "editorial_research_review":
-            editorial_tool = tool
-            break
-
-    if editorial_tool:
-        editorial_decision = await editorial_tool.execute(review_request)
-
-        print(f"   ✅ Editorial review completed")
-        print(f"   📝 Selected {len(editorial_decision.selected_topics)} topics")
-        print(f"   ❌ Rejected {len(editorial_decision.rejected_topics)} topics")
-
-        # Show selected topics
-        for topic in editorial_decision.selected_topics:
-            priority = editorial_decision.assignment_priority.get(topic.topic_title, 0)
-            print(f"      ✅ SELECTED: {topic.topic_title} (Priority: {priority})")
-
-        # Show rejected topics
-        for rejection in editorial_decision.rejected_topics[:2]:
-            print(f"      ❌ REJECTED: {rejection}")
-    else:
-        print("   ❌ Editorial research review tool not found")
-        return
-
-    # Step 3: Reporter writes stories based on assignments
-    print("\n3️⃣ WRITING PHASE: Reporter creating stories...")
-
-    if editorial_decision.selected_topics:
-        selected_topic = editorial_decision.selected_topics[0]
-        editorial_notes = editorial_decision.editorial_notes.get(selected_topic.topic_title, "")
-
-        print(f"   📝 Assigning story: {selected_topic.topic_title}")
-        print(f"   📋 Research sources: {len(selected_topic.sources)}")
-        print(f"   💡 Editorial notes: {editorial_notes[:100]}...")
-
-        # Create story assignment (this would normally be done through the assignment tool)
-        from agents.researcher_agent.research_models import StoryAssignment
-
-        assignment = StoryAssignment(
-            topic_research=selected_topic,
-            reporter_field=selected_topic.field,
-            assignment_notes=editorial_notes,
-            priority_level=editorial_decision.assignment_priority.get(selected_topic.topic_title, 1),
-            required_word_count=500,
-            editorial_guidelines="Write an engaging story based on the provided research data."
-        )
-
-        print(f"   ✅ Story assignment created")
-        print(f"   🎯 Target word count: {assignment.required_word_count}")
-        print(f"   ⭐ Priority level: {assignment.priority_level}")
-
-    # Step 4: Simulate publication and memory update
-    print("\n4️⃣ PUBLICATION PHASE: Publishing and updating memory...")
-
-    if editorial_decision.selected_topics:
-        # Add published topic to memory
-        from utils.topic_memory_models import CoveredTopic, TopicStatus
-
-        published_topic = CoveredTopic(
-            title=selected_topic.topic_title,
-            description=selected_topic.topic_description,
-            field=selected_topic.field,
-            published_date=datetime.now().strftime("%Y-%m-%d"),
-            story_id=f"story-{selected_topic.field.value}-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-            keywords=selected_topic.keywords,
-            status=TopicStatus.PUBLISHED
-        )
-
-        add_params = ForbiddenTopicsParams(
-            operation="add_topic",
-            new_topic=published_topic
-        )
-
-        add_result = await forbidden_tool.execute(add_params)
-
-        if add_result.success:
-            print(f"   ✅ Added topic to memory: {published_topic.title}")
-            print(f"   📊 Total topics in memory: {add_result.total_topics_in_memory}")
-        else:
-            print(f"   ❌ Failed to add to memory: {add_result.error}")
-
-    print("\n🎉 Three-Agent Workflow Test Completed!")
-    print("✅ Research → Editorial Review → Story Assignment → Publication")
-
-
-if __name__ == "__main__":
-    asyncio.run(test_complete_three_agent_workflow())
-```
-
-### 6.2 Create Researcher Agent Standalone Test
-
-Create the file `test_researcher_agent.py`:
-
-```python
-"""Test the Researcher Agent independently."""
-
-import asyncio
-
-from agents.agent_factory import AgentFactory
-from core.config_service import ConfigService
-
-
-async def test_researcher_agent():
-    """Test Researcher Agent functionality."""
-    print("🔬 Researcher Agent Test")
-    print("=" * 30)
-
-    config_service = ConfigService()
-    factory = AgentFactory(config_service)
-
-    # Create researcher agent
-    researcher = factory.create_researcher()
-    print("✅ Researcher Agent created")
-
-    # Test 1: Research trending topics across multiple fields
-    print("\n1️⃣ Testing multi-field topic research...")
-
-    result = await researcher.research_trending_topics(
-        fields=["technology", "science"],
-        topics_per_field=2
-    )
-
-    if result["success"]:
-        print(f"   ✅ Research successful")
-        print(f"   ⏱️  Duration: {result['research_duration']:.1f} seconds")
-        print(f"   📊 Topics found: {len(result['topics_researched'])}")
-        print(f"   🔍 Total sources: {result['total_sources']}")
-        print(f"   📋 Fields covered: {', '.join(result['fields_covered'])}")
-
-        print(f"\n   📰 Research Summary:")
-        print(f"   {result['research_summary']}")
-
-        # Show detailed topic information
-        print(f"\n   🔍 Detailed Topic Analysis:")
-        for i, topic in enumerate(result["topics_researched"][:2]):
-            print(f"   \n   Topic {i+1}: {topic['topic_title']}")
-            print(f"      Field: {topic['field']}")
-            print(f"      Trending Score: {topic['trending_score']:.2f}")
-            print(f"      Research Depth: {topic['research_depth']} sources")
-            print(f"      Keywords: {', '.join(topic['keywords'][:5])}")
-            print(f"      Description: {topic['topic_description'][:100]}...")
-
-            # Show source breakdown
-            source_types = {}
-            for source in topic['sources']:
-                source_type = source['source_type']
-                source_types[source_type] = source_types.get(source_type, 0) + 1
-
-            print(f"      Source Types: {dict(source_types)}")
-
-            # Show key points
-            if topic['key_points']:
-                print(f"      Key Points:")
-                for point in topic['key_points'][:2]:
-                    print(f"        • {point}")
-    else:
-        print(f"   ❌ Research failed: {result['error']}")
-
-    # Test 2: Deep research on specific topic
-    print("\n2️⃣ Testing deep topic research...")
-
-    if result["success"] and result["topics_researched"]:
-        first_topic = result["topics_researched"][0]
-
-        deep_result = await researcher.deep_research_topic(
-            topic_title=first_topic["topic_title"],
-            field=first_topic["field"]
-        )
-
-        if deep_result["success"]:
-            topic_research = deep_result["topic_research"]
-            print(f"   ✅ Deep research successful")
-            print(f"   🎯 Relevance Score: {deep_result['relevance_score']:.2f}")
-            print(f"   📊 Research Depth: {topic_research['research_depth']} sources")
-            print(f"   📝 Content Summary Length: {len(topic_research['content_summary'])} chars")
-
-            # Show content summary
-            print(f"\n   📄 Content Summary:")
-            print(f"   {topic_research['content_summary'][:200]}...")
-
-        else:
-            print(f"   ❌ Deep research failed: {deep_result['error']}")
-
-    print("\n🎉 Researcher Agent test completed!")
-
-
-if __name__ == "__main__":
-    asyncio.run(test_researcher_agent())
-```
 
 ## 🔧 Step 7: Update Reporter Agent for Research-Based Writing
 
@@ -2299,486 +2056,81 @@ Your stories should demonstrate deep understanding of the research while creatin
 """
 ```
 
-## 🧪 Step 8: Run Complete Testing Suite
-
-### 8.1 Execute All Tests
-
-Run the complete testing suite to verify the three-agent workflow:
-
-```bash
-# Test 1: Researcher Agent functionality
-python test_researcher_agent.py
-
-# Test 2: Complete three-agent workflow
-python test_three_agent_workflow.py
-
-# Test 3: Individual component tests (if needed)
-python -c "
-import asyncio
-from agents.agent_factory import AgentFactory
-from core.config_service import ConfigService
-
-async def quick_test():
-    config = ConfigService()
-    factory = AgentFactory(config)
-
-    # Test agent creation
-    researcher = factory.create_researcher()
-    editor = factory.create_editor()
-    reporter = factory.create_reporter('technology')
-
-    print('✅ All agents created successfully')
-    print(f'Researcher tools: {len(researcher.tools)}')
-    print(f'Editor tools: {len(editor.tools)}')
-    print(f'Reporter tools: {len(reporter.tools)}')
-
-asyncio.run(quick_test())
-"
-```
-
-### 8.2 Expected Test Results
-
-**Researcher Agent Test Results:**
-```
-🔬 Researcher Agent Test
-==============================
-
-✅ Researcher Agent created
-
-1️⃣ Testing multi-field topic research...
-   ✅ Research successful
-   ⏱️  Duration: 15.3 seconds
-   📊 Topics found: 4
-   🔍 Total sources: 12
-   📋 Fields covered: technology, science
-
-   📰 Research Summary:
-   Research completed in 15.3 seconds.
-   Found 4 trending topics across 2 fields.
-   Gathered 12 sources total.
-   Field breakdown: technology: 2, science: 2
-   Top trending topics:
-   - AI Breakthrough in Medical Diagnosis (score: 0.85)
-   - Quantum Computing Milestone Achieved (score: 0.78)
-
-   🔍 Detailed Topic Analysis:
-
-   Topic 1: AI Breakthrough in Medical Diagnosis
-      Field: technology
-      Trending Score: 0.85
-      Research Depth: 3 sources
-      Keywords: ai, medical, diagnosis, breakthrough, healthcare
-      Description: Revolutionary AI system demonstrates superior accuracy in medical imaging diagnosis...
-      Source Types: {'youtube_video': 1, 'web_search': 1, 'web_scrape': 1}
-      Key Points:
-        • AI system achieves 95% accuracy in cancer detection
-        • Reduces diagnosis time from hours to minutes
-
-2️⃣ Testing deep topic research...
-   ✅ Deep research successful
-   🎯 Relevance Score: 0.92
-   📊 Research Depth: 5 sources
-   📝 Content Summary Length: 487 chars
-
-   📄 Content Summary:
-   The AI breakthrough represents a significant advancement in medical technology, with researchers demonstrating unprecedented accuracy in diagnostic imaging. The system combines deep learning algorithms with medical expertise...
-
-🎉 Researcher Agent test completed!
-```
-
-**Three-Agent Workflow Test Results:**
-```
-🔄 Three-Agent Workflow Test
-==================================================
-
-✅ Created Researcher, Editor, and Reporter agents
-
-1️⃣ RESEARCH PHASE: Discovering trending topics...
-   📊 Research completed in 12.7s
-   📋 Found 4 topics
-   🔍 Gathered 11 sources
-   📰 Topic 1: Quantum Computing Breakthrough at IBM
-      Field: technology
-      Trending Score: 0.82
-      Sources: 3
-   📰 Topic 2: Climate Change Impact on Ocean Currents
-      Field: science
-      Trending Score: 0.76
-      Sources: 3
-
-2️⃣ EDITORIAL PHASE: Reviewing research and selecting topics...
-   🚫 Found 2 forbidden topics
-   ✅ Editorial review completed
-   📝 Selected 2 topics
-   ❌ Rejected 2 topics
-      ✅ SELECTED: Quantum Computing Breakthrough at IBM (Priority: 1)
-      ✅ SELECTED: Climate Change Impact on Ocean Currents (Priority: 2)
-      ❌ REJECTED: AI Development Update: Lower editorial priority
-      ❌ REJECTED: Space Exploration News: Similar to recent coverage
-
-3️⃣ WRITING PHASE: Reporter creating stories...
-   📝 Assigning story: Quantum Computing Breakthrough at IBM
-   📋 Research sources: 3
-   💡 Editorial notes: Focus on the technical breakthrough and its practical implications for industry...
-   ✅ Story assignment created
-   🎯 Target word count: 500
-   ⭐ Priority level: 1
-
-4️⃣ PUBLICATION PHASE: Publishing and updating memory...
-   ✅ Added topic to memory: Quantum Computing Breakthrough at IBM
-   📊 Total topics in memory: 8
-
-🎉 Three-Agent Workflow Test Completed!
-✅ Research → Editorial Review → Story Assignment → Publication
-```
-
-### 8.3 Verify File Structure
-
-Check that all new files are created correctly:
-
-```bash
-# Check the agent structure
-find libs/common/agents -name "*.py" | grep -E "(researcher|research)" | head -10
-
-# Expected output:
-# libs/common/agents/researcher_agent/researcher_agent_main.py
-# libs/common/agents/researcher_agent/research_models.py
-# libs/common/agents/researcher_agent/research_tools.py
-# libs/common/agents/editor_agent/editorial_research_tool.py
-# libs/common/agents/reporter_agent/research_story_tool.py
-```
 
 ## 🎯 Step 9: Integration with Full Newspaper Generation
 
-### 9.1 Create Complete Three-Agent Newspaper Generation
+### 9.1 Workflow Outline (no full script)
 
-Create the file `generate_newspaper_three_agent.py`:
+- Phase 1 — Researcher: discover trending topics per field, aggregate multi-source research, save to SharedMemoryStore
+- Phase 2 — Editor: review research results, filter against forbidden topics, select topics, add notes and priorities
+- Phase 3 — Reporter (memory-only): retrieve research from memory using fetch_from_memory (topic_key or topic_query), write story with use_llm
+- Phase 4 — Publication: publish stories and update topic memory
 
+Note:
+- Reporter uses only fetch_from_memory and use_llm (no search/scrape/YouTube)
+- All memory access is via our SharedMemoryStore
+
+### 9.2 Minimal code snippets (guidance only)
+
+Create agents:
 ```python
-"""Complete newspaper generation using the three-agent workflow."""
-
-import asyncio
-from datetime import datetime
-
 from agents.agent_factory import AgentFactory
-from agents.researcher_agent.research_models import ResearchRequest, EditorialReviewRequest
 from agents.types import ReporterField
 from core.config_service import ConfigService
-from utils.forbidden_topics_tool import ForbiddenTopicsTool, ForbiddenTopicsParams
 
-
-async def generate_newspaper_three_agent():
-    """Generate complete newspaper using Researcher → Editor → Reporter workflow."""
-    print("📰 BobTimes Three-Agent Newspaper Generation")
-    print("=" * 60)
-
-    config_service = ConfigService()
-    factory = AgentFactory(config_service)
-
-    # Create agents
-    researcher = factory.create_researcher()
-    editor = factory.create_editor()
-    reporters = {
-        ReporterField.TECHNOLOGY: factory.create_reporter(ReporterField.TECHNOLOGY),
-        ReporterField.SCIENCE: factory.create_reporter(ReporterField.SCIENCE),
-        ReporterField.ECONOMICS: factory.create_reporter(ReporterField.ECONOMICS)
-    }
-
-    print("✅ Created all agents: 1 Researcher, 1 Editor, 3 Reporters")
-
-    # Phase 1: Research
-    print("\n🔬 PHASE 1: RESEARCH - Discovering and gathering information...")
-
-    research_result = await researcher.research_trending_topics(
-        fields=["technology", "science", "economics"],
-        topics_per_field=3
-    )
-
-    if not research_result["success"]:
-        print(f"❌ Research failed: {research_result['error']}")
-        return
-
-    print(f"   ✅ Research completed: {len(research_result['topics_researched'])} topics")
-    print(f"   📊 Total sources gathered: {research_result['total_sources']}")
-    print(f"   ⏱️  Research time: {research_result['research_duration']:.1f}s")
-
-    # Phase 2: Editorial Review
-    print("\n📝 PHASE 2: EDITORIAL - Reviewing research and making decisions...")
-
-    # Get forbidden topics
-    forbidden_tool = ForbiddenTopicsTool(config_service)
-    forbidden_params = ForbiddenTopicsParams(operation="get_forbidden", days_back=30)
-    forbidden_result = await forbidden_tool.execute(forbidden_params)
-    forbidden_topics = forbidden_result.forbidden_topics if forbidden_result.success else []
-
-    print(f"   🚫 Checking against {len(forbidden_topics)} forbidden topics")
-
-    # Convert research for editorial review
-    from agents.researcher_agent.research_models import ResearchResult, TopicResearch
-
-    topics_researched = [TopicResearch(**topic_data) for topic_data in research_result["topics_researched"]]
-    research_obj = ResearchResult(
-        success=True,
-        topics_researched=topics_researched,
-        total_sources=research_result["total_sources"],
-        research_summary=research_result["research_summary"],
-        fields_covered=[ReporterField(f) for f in research_result["fields_covered"]],
-        research_duration=research_result["research_duration"]
-    )
-
-    # Editorial review
-    review_request = EditorialReviewRequest(
-        research_result=research_obj,
-        forbidden_topics=forbidden_topics,
-        priority_fields=[ReporterField.TECHNOLOGY, ReporterField.SCIENCE],
-        max_topics_to_select=6
-    )
-
-    editorial_tool = next((tool for tool in editor.tools if tool.name == "editorial_research_review"), None)
-    if not editorial_tool:
-        print("❌ Editorial research review tool not found")
-        return
-
-    editorial_decision = await editorial_tool.execute(review_request)
-
-    print(f"   ✅ Editorial review completed")
-    print(f"   📝 Selected {len(editorial_decision.selected_topics)} topics for publication")
-    print(f"   ❌ Rejected {len(editorial_decision.rejected_topics)} topics")
-
-    # Show selected topics
-    for topic in editorial_decision.selected_topics:
-        priority = editorial_decision.assignment_priority.get(topic.topic_title, 0)
-        print(f"      ✅ {topic.topic_title} ({topic.field.value}, Priority: {priority})")
-
-    # Phase 3: Story Writing
-    print("\n✍️  PHASE 3: WRITING - Creating stories from research...")
-
-    completed_stories = []
-
-    for topic in editorial_decision.selected_topics:
-        try:
-            # Get appropriate reporter
-            reporter = reporters[topic.field]
-
-            # Create story assignment
-            from agents.researcher_agent.research_models import StoryAssignment
-
-            assignment = StoryAssignment(
-                topic_research=topic,
-                reporter_field=topic.field,
-                assignment_notes=editorial_decision.editorial_notes.get(topic.topic_title, ""),
-                priority_level=editorial_decision.assignment_priority.get(topic.topic_title, 1),
-                required_word_count=500,
-                editorial_guidelines="Write engaging story based on comprehensive research data."
-            )
-
-            # Find research story tool
-            research_tool = next((tool for tool in reporter.tools if tool.name == "research_story_writer"), None)
-            if not research_tool:
-                print(f"   ⚠️  Research story tool not found for {topic.topic_title}")
-                continue
-
-            # Write story
-            from agents.reporter_agent.research_story_tool import ResearchStoryParams
-
-            story_params = ResearchStoryParams(
-                story_assignment=assignment,
-                writing_style="engaging",
-                include_quotes=True
-            )
-
-            story_result = await research_tool.execute(story_params)
-
-            if story_result.success:
-                completed_stories.append(story_result.story_draft)
-                print(f"   ✅ Story completed: {topic.topic_title}")
-                print(f"      📊 Word count: {story_result.word_count}")
-                print(f"      🔗 Sources used: {story_result.sources_used}")
-                print(f"      📈 Research coverage: {story_result.research_coverage:.1%}")
-            else:
-                print(f"   ❌ Story failed: {topic.topic_title} - {story_result.error}")
-
-        except Exception as e:
-            print(f"   ❌ Story creation failed for {topic.topic_title}: {e}")
-            continue
-
-    # Phase 4: Publication
-    print("\n📰 PHASE 4: PUBLICATION - Finalizing newspaper...")
-
-    print(f"   📚 Total stories completed: {len(completed_stories)}")
-
-    # Update topic memory
-    for story in completed_stories:
-        from utils.topic_memory_models import CoveredTopic, TopicStatus
-
-        covered_topic = CoveredTopic(
-            title=story.title,
-            description=story.summary,
-            field=story.field,
-            published_date=datetime.now().strftime("%Y-%m-%d"),
-            story_id=f"story-{story.field.value}-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-            keywords=[],  # Could extract from content
-            status=TopicStatus.PUBLISHED
-        )
-
-        add_params = ForbiddenTopicsParams(operation="add_topic", new_topic=covered_topic)
-        await forbidden_tool.execute(add_params)
-
-    print(f"   ✅ Updated topic memory with {len(completed_stories)} new topics")
-
-    # Generate newspaper summary
-    field_counts = {}
-    total_words = 0
-    total_sources = 0
-
-    for story in completed_stories:
-        field_counts[story.field.value] = field_counts.get(story.field.value, 0) + 1
-        total_words += story.word_count
-        total_sources += len(story.sources)
-
-    print(f"\n🎉 NEWSPAPER GENERATION COMPLETED!")
-    print(f"   📊 Stories by field: {dict(field_counts)}")
-    print(f"   📝 Total word count: {total_words:,}")
-    print(f"   🔗 Total sources: {total_sources}")
-    print(f"   🏆 Research-driven journalism achieved!")
-
-    # Show sample story
-    if completed_stories:
-        sample_story = completed_stories[0]
-        print(f"\n📖 SAMPLE STORY:")
-        print(f"   Title: {sample_story.title}")
-        print(f"   Field: {sample_story.field.value}")
-        print(f"   Word Count: {sample_story.word_count}")
-        print(f"   Sources: {len(sample_story.sources)}")
-        print(f"   Content Preview: {sample_story.content[:200]}...")
-
-
-if __name__ == "__main__":
-    asyncio.run(generate_newspaper_three_agent())
+config = ConfigService()
+factory = AgentFactory(config)
+researcher = factory.create_researcher()
+editor = factory.create_editor()
+reporter = factory.create_reporter(ReporterField.TECHNOLOGY)
 ```
 
-## 🏆 Step 10: Lab Summary and Best Practices
+Fetch research from memory with intelligent matching:
+```python
+from agents.reporter_agent.reporter_tools import FetchFromMemoryParams
 
-### 10.1 Architecture Summary
+# Get the fetch tool from the reporter's toolset
+fetch_tool = next(t for t in reporter.tools if t.name == "fetch_from_memory")
 
-**Three-Agent Workflow Achieved:**
-
-```
-🔬 RESEARCHER AGENT
-├── Multi-source research (YouTube, DuckDuckGo, Web Scraping)
-├── Topic discovery and trending analysis
-├── Content gathering and source aggregation
-└── Research packaging for editorial review
-
-📝 EDITOR AGENT
-├── Research review and evaluation
-├── Topic memory management (forbidden topics)
-├── Editorial decision making
-└── Story assignment with research data
-
-✍️  REPORTER AGENT
-├── Research-based story writing
-├── Content creation from provided data
-├── Source integration and attribution
-└── Editorial guideline compliance
+# Use topic_query when the exact key is unknown; tool selects the best match
+params = FetchFromMemoryParams(field="technology", topic_query="o4o multimodal launch")
+result = await fetch_tool.execute(params)
+# result.topic_key, result.content_summary
 ```
 
-### 10.2 Key Benefits Achieved
+Draft with the LLM:
+```python
+from agents.reporter_agent.reporter_tools import UseLLMParams
 
-**✅ Separation of Concerns:**
-- **Research**: Dedicated agent for information discovery
-- **Editorial**: Focused decision-making and quality control
-- **Writing**: Specialized story creation from research
-
-**✅ Enhanced Quality:**
-- **Comprehensive Research**: Multi-source data gathering
-- **Editorial Intelligence**: Memory-based decision making
-- **Research-Driven Stories**: Content based on thorough investigation
-
-**✅ Scalability:**
-- **Parallel Processing**: Multiple reporters can work simultaneously
-- **Specialized Tools**: Each agent has purpose-built capabilities
-- **Modular Architecture**: Easy to extend and modify
-
-### 10.3 Best Practices for Three-Agent System
-
-**Research Phase:**
-1. **Source Diversity**: Use multiple research sources for comprehensive coverage
-2. **Quality Metrics**: Track trending scores and research depth
-3. **Content Caching**: Cache research results to avoid duplicate work
-4. **Source Validation**: Verify source credibility and relevance
-
-**Editorial Phase:**
-1. **Memory Management**: Regularly update and maintain topic memory
-2. **Balance Coverage**: Ensure diverse field representation
-3. **Quality Thresholds**: Set minimum research depth requirements
-4. **Editorial Guidelines**: Provide clear, actionable guidance to reporters
-
-**Writing Phase:**
-1. **Research Utilization**: Maximize use of provided research data
-2. **Source Attribution**: Properly cite all research sources
-3. **Style Consistency**: Maintain consistent writing standards
-4. **Quality Metrics**: Track research coverage and story quality
-
-### 10.4 Performance Considerations
-
-**Research Optimization:**
-- **Parallel Source Gathering**: Research multiple sources simultaneously
-- **Content Limits**: Set reasonable limits on content length per source
-- **API Rate Limiting**: Respect API limits for external services
-- **Caching Strategy**: Cache research results for reuse
-
-**Editorial Efficiency:**
-- **Batch Processing**: Review multiple topics together
-- **Automated Filtering**: Use similarity detection for initial filtering
-- **Priority Queues**: Process high-priority topics first
-- **Decision Logging**: Track editorial decisions for analysis
-
-**Writing Scalability:**
-- **Template Systems**: Use story templates for consistency
-- **Parallel Writing**: Multiple reporters can work simultaneously
-- **Quality Checks**: Automated quality validation
-- **Revision Workflows**: Structured feedback and revision processes
-
-## 🎯 Lab 4 Complete!
-
-Congratulations! You've successfully implemented a sophisticated three-agent system that revolutionizes the newspaper generation workflow:
-
-### **🏆 Major Achievements:**
-
-1. **Researcher Agent**: Intelligent topic discovery and multi-source research
-2. **Enhanced Editor Agent**: Research-aware editorial decision making
-3. **Research-Based Reporter**: Story writing from comprehensive research data
-4. **Complete Integration**: Seamless three-agent workflow
-5. **Quality Assurance**: Research-driven journalism with proper attribution
-
-### **📈 System Capabilities:**
-
-- **Multi-Source Research**: YouTube, DuckDuckGo, and web scraping integration
-- **Intelligent Topic Discovery**: Trending analysis and relevance scoring
-- **Editorial Memory**: Prevents duplication across news cycles
-- **Research-Driven Writing**: Stories based on comprehensive investigation
-- **Scalable Architecture**: Supports multiple reporters and parallel processing
-
-### **🔄 Workflow Excellence:**
-
-The three-agent system creates a professional journalism workflow:
-1. **Research** → Comprehensive information gathering
-2. **Editorial** → Intelligent decision making and assignment
-3. **Writing** → High-quality story creation from research
-4. **Publication** → Memory-aware content management
-
-Your BobTimes newspaper now operates with the sophistication of a professional newsroom, with specialized agents handling research, editorial decisions, and story writing!
-
-**🚀 Ready for Advanced Features?** Consider implementing:
-- Real-time research monitoring and alerts
-- Advanced similarity detection using embeddings
-- Multi-language research and translation capabilities
-- Social media sentiment analysis integration
-- Automated fact-checking and verification systems
-
-🎉 **Lab 4 Complete!** Your newspaper now has intelligent, research-driven journalism capabilities!
+use_llm = next(t for t in reporter.tools if t.name == "use_llm")
+draft = await use_llm.execute(UseLLMParams(prompt="Write a 200-word news brief summarizing the research."))
 ```
-```
-```
-```
+
+## 🏆 Step 10: Lab Summary and Best Practices (Concise)
+
+Architecture at a glance
+- Researcher: multi-source research, topic discovery, saves results to SharedMemoryStore
+- Editor: reviews research, filters against forbidden topics, selects topics, assigns stories
+- Reporter: memory-only writing using fetch_from_memory + use_llm (no search/scrape/YouTube)
+
+Key guidelines
+- Use the project-native SharedMemoryStore
+- Prefer exact topic_key; otherwise provide topic_query for intelligent matching
+- Keep topic keys consistent across news cycles for reliable retrieval
+- Use the forbidden topics tool to avoid duplication across cycles
+- Keep reporter prompts focused on writing from memory; no research tools
+- Use enums and Pydantic models for type safety across agents and tools
+
+Performance and quality
+- Parallelize safe research tasks to improve throughput
+- Cache reusable research results where helpful
+- Attribute sources with URLs and preserve provenance
+- Use the shared logging service for clear, structured logs
+
+Optional enhancements
+- Embedding-based topic matching
+- Multilingual research and summarization
+- Automated fact-checking and source quality scoring
+- Image workflow refinements (selection > generation)
+
+🎉 Lab 4 complete: your system now runs a three-agent workflow with memory-first writing.
