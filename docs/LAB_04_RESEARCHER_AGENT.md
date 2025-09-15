@@ -11,6 +11,132 @@ By the end of this lab, you will:
 - ✅ Design a new three-agent editorial workflow
 - ✅ Build research data models and content aggregation
 
+## What You Will Build (Clear Goal)
+
+By the end of this lab you will have a working Researcher Agent that:
+- Discovers trending topics using YouTube, web search, and scraping
+- Aggregates sources into structured research packages (saved in shared memory)
+- Enables the Editor to select topics and assign them to Reporters
+- Fits into a three-agent workflow: Researcher → Editor → Reporter (memory-first)
+
+## Implementation Paths (At a Glance)
+
+Use these exact paths from this repository as your map:
+- Researcher Agent package: libs/common/agents/researcher_agent/
+  - Main class: libs/common/agents/researcher_agent/researcher_agent_main.py
+  - Tools: libs/common/agents/researcher_agent/researcher_tools.py
+  - Prompt: libs/common/agents/researcher_agent/researcher_prompt.py
+  - Executor/State/Models: libs/common/agents/researcher_agent/
+- Shared memory store: libs/common/agents/shared_memory_store.py
+- Agent factory (creates agents): libs/common/agents/agent_factory.py
+- Core types (including JournalistField): libs/common/agents/types.py
+
+## Recommended Approach: Start by Copying the Reporter Folder
+
+If you are implementing a Researcher Agent from scratch, the fastest, most reliable method is to copy the Reporter package and adapt it:
+
+Steps:
+1) Copy the reporter package to a new researcher package
+<augment_code_snippet mode="EXCERPT">
+````bash
+cp -r libs/common/agents/reporter_agent libs/common/agents/researcher_agent
+````
+</augment_code_snippet>
+
+2) Rename classes and files inside the new folder from "Reporter" to "Researcher"
+- Example: ReporterAgent → ResearcherAgent, ReporterToolRegistry → ResearcherToolRegistry
+- Update imports that pointed to reporter paths
+
+3) Replace the tool registry with research-capable tools
+- Allowed tool names for Researcher (present in this repo): "youtube_search", "search", "scrape", and "fetch_from_memory"
+
+4) Update the system prompt to describe RESEARCH responsibilities (topic discovery, multi-source gathering, saving to shared memory)
+
+5) Wire the agent in the factory so it can be created from one place
+- Use AgentFactory.create_researcher(...) in libs/common/agents/agent_factory.py
+
+Important: In this repository the enum is JournalistField (not ReporterField). Use JournalistField for fields.
+<augment_code_snippet path="libs/common/agents/types.py" mode="EXCERPT">
+````python
+class JournalistField(StrEnum):
+    ECONOMICS = "economics"
+    TECHNOLOGY = "technology"
+    SCIENCE = "science"
+````
+</augment_code_snippet>
+
+## Concrete Examples Based on the Current Implementation
+
+- Researcher tools available (from ResearcherToolRegistry):
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_tools.py" mode="EXCERPT">
+````python
+self.tools = {
+    "search": ResearcherSearchTool(),
+    "scrape": ResearcherScraperTool(),
+    "youtube_search": YouTubeResearcherTool(self.config_service),
+    "fetch_from_memory": FetchFromMemoryTool(),
+}
+````
+</augment_code_snippet>
+
+- Creating a Researcher via the factory and running a task:
+<augment_code_snippet mode="EXCERPT">
+````python
+from libs.common.agents.agent_factory import AgentFactory
+from libs.common.agents.types import JournalistField
+
+factory = AgentFactory()
+researcher = factory.create_researcher(JournalistField.TECHNOLOGY)
+# researcher.execute_task(...) with a JournalistTask
+````
+</augment_code_snippet>
+
+- Shared memory access (project-native):
+<augment_code_snippet path="libs/common/agents/shared_memory_store.py" mode="EXCERPT">
+````python
+from libs.common.agents.shared_memory_store import get_shared_memory_store
+store = get_shared_memory_store()
+# store.list_topics("technology") → ["openai-o4o-launch", ...]
+````
+</augment_code_snippet>
+
+- Fetch-from-memory usage (Researcher tool name and example):
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_tools.py" mode="EXCERPT">
+````python
+name = "fetch_from_memory"
+# Usage:
+# <tool>fetch_from_memory</tool><args>{"topic_key": "Best Ai Tools To Create Viral Content", "field": "technology"}</args>
+````
+</augment_code_snippet>
+
+Note: This lab intentionally avoids referencing test files. Focus on the agent, tools, and memory flow. You can validate behavior by running your agents through the factory and logging outputs.
+### More examples from the current implementation
+
+- Researcher prompt highlights (tooling + memory behavior):
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_prompt.py" mode="EXCERPT">
+````python
+## PHASE: RESEARCH
+- Use youtube_search, search, and scrape tools to gather information
+- Accumulate facts and credible sources about the topic
+- Save sources to SharedMemoryStore under clear, reusable topic keys
+- Return a ResearchResult when research is sufficient
+````
+</augment_code_snippet>
+
+- Executor stores sources to memory after tool runs:
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_executor.py" mode="EXCERPT">
+````python
+if operation == "search" and topic_mapping:
+    enhanced_sources, enhanced_mapping = await self._enhance_search_content(
+        result.sources, topic_mapping, state
+    )
+    ResearcherStateManager.save_sources_with_topics(
+        state=state, sources=enhanced_sources, topic_source_mapping=enhanced_mapping
+    )
+````
+</augment_code_snippet>
+
+
 
 ## 📋 Prerequisites
 
@@ -76,7 +202,7 @@ from enum import StrEnum
 from typing import Any, Optional
 
 from agents.models.story_models import StorySource
-from agents.types import ReporterField
+from agents.types import JournalistField
 from pydantic import BaseModel, Field
 
 
@@ -114,7 +240,7 @@ class TopicResearch(BaseModel):
     """Comprehensive research data for a topic."""
     topic_title: str = Field(description="Main topic title")
     topic_description: str = Field(description="Detailed topic description")
-    field: ReporterField = Field(description="News field category")
+    field: JournalistField = Field(description="News field category")
     keywords: list[str] = Field(default_factory=list, description="Related keywords")
     sources: list[ResearchSource] = Field(default_factory=list, description="Research sources")
     content_summary: str = Field(description="Summary of all gathered content")
@@ -134,7 +260,7 @@ class TopicResearch(BaseModel):
 
 class ResearchRequest(BaseModel):
     """Request for research on specific topics or fields."""
-    fields: list[ReporterField] = Field(description="Fields to research")
+    fields: list[JournalistField] = Field(description="Fields to research")
     topics_per_field: int = Field(default=5, description="Number of topics to research per field")
     research_depth: int = Field(default=3, description="Number of sources per topic")
     include_youtube: bool = Field(default=True, description="Include YouTube research")
@@ -150,11 +276,11 @@ class ResearchResult(BaseModel):
     topics_researched: list[TopicResearch] = Field(default_factory=list, description="Researched topics")
     total_sources: int = Field(default=0, description="Total sources gathered")
     research_summary: str = Field(description="Summary of research findings")
-    fields_covered: list[ReporterField] = Field(default_factory=list, description="Fields that were researched")
+    fields_covered: list[JournalistField] = Field(default_factory=list, description="Fields that were researched")
     research_duration: float = Field(default=0.0, description="Research duration in seconds")
     error: Optional[str] = Field(None, description="Error message if failed")
 
-    def get_topics_by_field(self, field: ReporterField) -> list[TopicResearch]:
+    def get_topics_by_field(self, field: JournalistField) -> list[TopicResearch]:
         """Get topics filtered by field."""
         return [topic for topic in self.topics_researched if topic.field == field]
 
@@ -167,7 +293,7 @@ class EditorialReviewRequest(BaseModel):
     """Request for editorial review of research."""
     research_result: ResearchResult = Field(description="Research result to review")
     forbidden_topics: list[str] = Field(default_factory=list, description="Topics to avoid")
-    priority_fields: list[ReporterField] = Field(default_factory=list, description="Priority fields")
+    priority_fields: list[JournalistField] = Field(default_factory=list, description="Priority fields")
     max_topics_to_select: int = Field(default=10, description="Maximum topics to select")
 
 
@@ -183,7 +309,7 @@ class EditorialDecision(BaseModel):
 class StoryAssignment(BaseModel):
     """Assignment of researched topic to reporter."""
     topic_research: TopicResearch = Field(description="Research data for the topic")
-    reporter_field: ReporterField = Field(description="Reporter field assignment")
+    reporter_field: JournalistField = Field(description="Reporter field assignment")
     assignment_notes: str = Field(description="Special instructions for the reporter")
     priority_level: int = Field(default=1, description="Priority level (1-5)")
     deadline: Optional[datetime] = Field(None, description="Story deadline")
@@ -255,6 +381,104 @@ result = await fetch_tool.execute(params)
 
 ## 🛠️ Step 3: Create Researcher Agent Tools
 
+### 3.1 Current Researcher Tools (exact, from the code)
+
+- Registry definition (actual file):
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_tools.py" mode="EXCERPT">
+````python
+self.tools = {
+    "search": ResearcherSearchTool(),
+    "scrape": ResearcherScraperTool(),
+    "youtube_search": YouTubeResearcherTool(self.config_service),
+    "fetch_from_memory": FetchFromMemoryTool(),
+}
+````
+</augment_code_snippet>
+
+- What each tool does:
+  - search: DuckDuckGo news/text search; returns cleaned results and extracted topics
+  - scrape: Playwright-based content extraction for a single URL with interactive support
+  - youtube_search: Topics and transcripts from channels or specific videos (via YouTubeToolParams)
+  - fetch_from_memory: Retrieve previously saved research by exact topic key and field
+
+### 3.2 Parameters and quick usage examples
+
+- Search (ResearcherSearchTool)
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_tools.py" mode="EXCERPT">
+````python
+class SearchParams(BaseModel):
+    query: str
+    search_type: SearchType = SearchType.NEWS
+    max_results: int = 4
+    time_limit: str | None = None
+````
+</augment_code_snippet>
+
+Example usage:
+<augment_code_snippet mode="EXCERPT">
+````python
+from libs.common.agents.researcher_agent.researcher_tools import SearchParams, ResearcherToolRegistry
+registry = ResearcherToolRegistry()
+search = registry.get_tool_by_name("search")
+res = await search.execute(SearchParams(query="AI tools", time_limit="w"))
+````
+</augment_code_snippet>
+
+- Scrape (ResearcherScraperTool)
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_tools.py" mode="EXCERPT">
+````python
+class ScrapeParams(BaseModel):
+    url: str
+````
+</augment_code_snippet>
+
+Example usage:
+<augment_code_snippet mode="EXCERPT">
+````python
+from libs.common.agents.researcher_agent.researcher_tools import ScrapeParams
+scrape = registry.get_tool_by_name("scrape")
+res = await scrape.execute(ScrapeParams(url="https://example.com"))
+````
+</augment_code_snippet>
+
+- YouTube (YouTubeResearcherTool)
+<augment_code_snippet path="libs/common/utils/youtube_tool.py" mode="EXCERPT">
+````python
+class YouTubeToolParams(BaseModel):
+    channel_ids: list[str] = []
+    field: YouTubeField | None = None
+    subsection: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None
+    operation: str = "topics"
+````
+</augment_code_snippet>
+
+Example usage:
+<augment_code_snippet mode="EXCERPT">
+````python
+yt = registry.get_tool_by_name("youtube_search")
+res = await yt.execute(YouTubeToolParams(field="technology", operation="topics"))
+````
+</augment_code_snippet>
+
+- Fetch From Memory (FetchFromMemoryTool)
+<augment_code_snippet path="libs/common/agents/researcher_agent/researcher_tools.py" mode="EXCERPT">
+````python
+class FetchFromMemoryParams(BaseModel):
+    topic_key: str
+    field: str  # "technology" | "economics" | "science"
+````
+</augment_code_snippet>
+
+Example usage:
+<augment_code_snippet mode="EXCERPT">
+````python
+fetch = registry.get_tool_by_name("fetch_from_memory")
+res = await fetch.execute(FetchFromMemoryParams(topic_key="Best Ai Tools To Create Viral Content", field="technology"))
+````
+</augment_code_snippet>
+
+> Use these tools directly (as the Researcher agent does) instead of any all-in-one tool abstraction.
+
 ### 3.1 Multi-Source Research Tool
 
 Create the file `libs/common/agents/researcher_agent/research_tools.py`:
@@ -274,7 +498,7 @@ from pydantic import BaseModel, Field
 
 from .research_models import (
     ResearchRequest, ResearchResult, TopicResearch, ResearchSource,
-    ResearchSourceType, ReporterField
+    ResearchSourceType, JournalistField
 )
 
 logger = get_logger(__name__)
@@ -402,7 +626,7 @@ This tool provides comprehensive research data for editorial decision-making.
                 error=str(e)
             )
 
-    async def _research_field(self, field: ReporterField, params: ResearchRequest) -> list[TopicResearch]:
+    async def _research_field(self, field: JournalistField, params: ResearchRequest) -> list[TopicResearch]:
         """Research topics for a specific field."""
         topics = []
 
@@ -423,7 +647,7 @@ This tool provides comprehensive research data for editorial decision-making.
 
         return topics
 
-    async def _discover_trending_topics(self, field: ReporterField, params: ResearchRequest) -> list[str]:
+    async def _discover_trending_topics(self, field: JournalistField, params: ResearchRequest) -> list[str]:
         """Discover trending topics for a field using multiple sources."""
         trending_topics = []
 
@@ -447,7 +671,7 @@ This tool provides comprehensive research data for editorial decision-making.
         unique_topics = list(dict.fromkeys(trending_topics))  # Preserve order
         return unique_topics[:params.topics_per_field * 2]  # Get extra for filtering
 
-    async def _get_youtube_trending_topics(self, field: ReporterField) -> list[str]:
+    async def _get_youtube_trending_topics(self, field: JournalistField) -> list[str]:
         """Get trending topics from YouTube channels."""
         if not self.youtube_tool:
             return []
@@ -472,7 +696,7 @@ This tool provides comprehensive research data for editorial decision-making.
             logger.error(f"YouTube research failed: {result.error}")
             return []
 
-    async def _get_search_trending_topics(self, field: ReporterField) -> list[str]:
+    async def _get_search_trending_topics(self, field: JournalistField) -> list[str]:
         """Get trending topics from web search."""
         if not self.search_tool:
             return []
@@ -503,7 +727,7 @@ This tool provides comprehensive research data for editorial decision-making.
 
         return topics
 
-    async def _research_topic_in_depth(self, topic_title: str, field: ReporterField, params: ResearchRequest) -> TopicResearch | None:
+    async def _research_topic_in_depth(self, topic_title: str, field: JournalistField, params: ResearchRequest) -> TopicResearch | None:
         """Research a specific topic in depth across multiple sources."""
         try:
             sources = []
@@ -540,21 +764,21 @@ This tool provides comprehensive research data for editorial decision-making.
             logger.error(f"In-depth research for '{topic_title}' failed: {e}")
             return None
 
-    def _get_field_channels(self, field: ReporterField) -> list[str]:
+    def _get_field_channels(self, field: JournalistField) -> list[str]:
         """Get YouTube channel IDs for a specific field."""
         # This should be configurable - for now, return sample channels
         channel_map = {
-            ReporterField.TECHNOLOGY: [
+            JournalistField.TECHNOLOGY: [
                 "UC_x5XG1OV2P6uZZ5FSM9Ttw",  # Google Developers
                 "UCXuqSBlHAE6Xw-yeJA0Tunw",  # Linus Tech Tips
                 "UC4QZ_LsYcvcq7qOsOhpAX4A"   # CodeBullet
             ],
-            ReporterField.SCIENCE: [
+            JournalistField.SCIENCE: [
                 "UCsXVk37bltHxD1rDPwtNM8Q",  # Kurzgesagt
                 "UC6nSFpj9HTCZ5t-N3Rm3-HA",  # Vsauce
                 "UCHnyfMqiRRG1u-2MsSQLbXA"   # Veritasium
             ],
-            ReporterField.ECONOMICS: [
+            JournalistField.ECONOMICS: [
                 "UCZ4AMrDcNrfy3X6nsU8-rPg",  # Economics Explained
                 "UCGy6uV7yqGWDeUWTZzT3ZEg"   # Ben Felix
             ]
@@ -562,22 +786,22 @@ This tool provides comprehensive research data for editorial decision-making.
 
         return channel_map.get(field, [])
 
-    def _get_field_search_queries(self, field: ReporterField) -> list[str]:
+    def _get_field_search_queries(self, field: JournalistField) -> list[str]:
         """Get search queries for discovering trending topics in a field."""
         query_map = {
-            ReporterField.TECHNOLOGY: [
+            JournalistField.TECHNOLOGY: [
                 "latest technology news 2024",
                 "AI breakthrough news",
                 "tech industry updates",
                 "software development trends"
             ],
-            ReporterField.SCIENCE: [
+            JournalistField.SCIENCE: [
                 "scientific discoveries 2024",
                 "research breakthrough news",
                 "space exploration updates",
                 "medical research news"
             ],
-            ReporterField.ECONOMICS: [
+            JournalistField.ECONOMICS: [
                 "economic news today",
                 "market analysis 2024",
                 "financial industry updates",
@@ -593,7 +817,7 @@ This tool provides comprehensive research data for editorial decision-making.
 Continue the MultiSourceResearchTool with compilation methods:
 
 ```python
-    async def _research_topic_youtube(self, topic: str, field: ReporterField) -> list[ResearchSource]:
+    async def _research_topic_youtube(self, topic: str, field: JournalistField) -> list[ResearchSource]:
         """Research a topic using YouTube sources."""
         if not self.youtube_tool:
             return []
@@ -639,7 +863,7 @@ Continue the MultiSourceResearchTool with compilation methods:
             logger.error(f"YouTube research for '{topic}' failed: {e}")
             return []
 
-    async def _research_topic_search(self, topic: str, field: ReporterField) -> list[ResearchSource]:
+    async def _research_topic_search(self, topic: str, field: JournalistField) -> list[ResearchSource]:
         """Research a topic using web search."""
         if not self.search_tool:
             return []
@@ -717,7 +941,7 @@ Continue the MultiSourceResearchTool with compilation methods:
 
         return scraped_sources
 
-    async def _compile_topic_research(self, topic_title: str, field: ReporterField, sources: list[ResearchSource], params: ResearchRequest) -> TopicResearch:
+    async def _compile_topic_research(self, topic_title: str, field: JournalistField, sources: list[ResearchSource], params: ResearchRequest) -> TopicResearch:
         """Compile comprehensive research data for a topic."""
         try:
             # Generate topic description using LLM
@@ -1034,13 +1258,13 @@ Your research directly impacts editorial decisions and story quality. Prioritize
     async def research_trending_topics(self, fields: list[str], topics_per_field: int = 5) -> dict:
         """Research trending topics across specified fields."""
         try:
-            from .research_models import ResearchRequest, ReporterField
+            from .research_models import ResearchRequest, JournalistField
 
             # Convert string fields to enum
             field_enums = []
             for field_str in fields:
                 try:
-                    field_enums.append(ReporterField(field_str))
+                    field_enums.append(JournalistField(field_str))
                 except ValueError:
                     logger.warning(f"Invalid field: {field_str}")
                     continue
@@ -1089,9 +1313,9 @@ Your research directly impacts editorial decisions and story quality. Prioritize
     async def deep_research_topic(self, topic_title: str, field: str) -> dict:
         """Conduct deep research on a specific topic."""
         try:
-            from .research_models import ResearchRequest, ReporterField
+            from .research_models import ResearchRequest, JournalistField
 
-            field_enum = ReporterField(field)
+            field_enum = JournalistField(field)
 
             # Create focused research request
             request = ResearchRequest(
@@ -2075,14 +2299,14 @@ Note:
 Create agents:
 ```python
 from agents.agent_factory import AgentFactory
-from agents.types import ReporterField
+from agents.types import JournalistField
 from core.config_service import ConfigService
 
 config = ConfigService()
 factory = AgentFactory(config)
 researcher = factory.create_researcher()
 editor = factory.create_editor()
-reporter = factory.create_reporter(ReporterField.TECHNOLOGY)
+reporter = factory.create_reporter(JournalistField.TECHNOLOGY)
 ```
 
 Fetch research from memory with intelligent matching:
