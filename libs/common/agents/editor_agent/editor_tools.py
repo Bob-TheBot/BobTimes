@@ -8,12 +8,15 @@ from typing import Any
 from agents.models.story_models import ImageSourceType, StoryDraft, StoryImage, StorySource, TopicList
 from agents.models.submission_models import PublishedStory
 from agents.models.task_models import JournalistTask
+from agents.models.task_models import JournalistTask
 from agents.tools.base_tool import BaseTool
 from agents.types import (
+    AgentType,
     AgentType,
     EconomicsSubSection,
     FieldTopicRequest,
     NewspaperSection,
+    JournalistField,
     JournalistField,
     ScienceSubSection,
     StoryPriority,
@@ -46,6 +49,7 @@ class Story(BaseModel):
     """Represents a published story with full metadata."""
     id: str
     title: str
+    field: JournalistField
     field: JournalistField
     status: StoryStatus
     content: str
@@ -138,6 +142,7 @@ class NewspaperFileStore:
             data = StoreData(
                 stories={},
                 front_page=[],
+                sections={field.value: [] for field in JournalistField},
                 sections={field.value: [] for field in JournalistField},
                 metadata=StoreMetadata(
                     last_updated=datetime.now().isoformat(),
@@ -327,6 +332,7 @@ class CollectTopicsResult(BaseModel):
     """Result of topic collection."""
     reasoning: str  # Explanation of topic collection (FIRST)
     topics_by_field: dict[JournalistField, list[str]]
+    topics_by_field: dict[JournalistField, list[str]]
     success: bool
     error: str | None = None
 
@@ -389,6 +395,7 @@ Returns: CollectTopicsResult with topics organized by field
 
                 combined_guidelines = f"{base_guidelines}\n\n{forbidden_text}\n\nIMPORTANT: Avoid duplicates."
 
+
                 task = JournalistTask(
                     agent_type=AgentType.RESEARCHER,
                     name=TaskType.FIND_TOPICS,
@@ -399,7 +406,9 @@ Returns: CollectTopicsResult with topics organized by field
                 )
 
                 # Execute task via task service (which spawns a researcher)
+                # Execute task via task service (which spawns a researcher)
                 # Topic collection uses FAST model for efficiency
+                result = await self.task_executor.execute_researcher_task(task, model_speed=model_speed)
                 result = await self.task_executor.execute_researcher_task(task, model_speed=model_speed)
 
                 if isinstance(result, TopicList):
@@ -443,6 +452,7 @@ Returns: CollectTopicsResult with topics organized by field
 
 class SelectTopicsParams(BaseModel):
     """Parameters for selecting topics from reporter-provided topics."""
+    field: JournalistField = Field(description="Field to select topics from")
     field: JournalistField = Field(description="Field to select topics from")
     available_topics: list[str] = Field(
         description="Topics provided by reporters for this field")
@@ -607,6 +617,7 @@ class SelectTopicsTool(BaseTool):
 class AssignTopicsParams(BaseModel):
     """Parameters for creating topic assignments from memory topics."""
     field: JournalistField  # Field to assign topics from
+    field: JournalistField  # Field to assign topics from
     selected_topics: list[str]  # Topics selected from memory to assign
     priority: StoryPriority = StoryPriority.MEDIUM  # Priority level for assignments
 
@@ -615,16 +626,19 @@ class TopicAssignment(BaseModel):
     """Single topic assignment that will spawn a reporter."""
     reporter_id: str  # Generated ID for the reporter that will be spawned
     field: JournalistField
+    field: JournalistField
     topic: str
     priority: int  # Priority for this story
     guidelines: str | None = None
 
 
 def _empty_rejected_topics() -> dict[JournalistField, list[str]]:
+def _empty_rejected_topics() -> dict[JournalistField, list[str]]:
     """Typed default factory for rejected topics."""
     return {}
 
 
+def empty_topics_collected() -> dict[JournalistField, list[str]]:
 def empty_topics_collected() -> dict[JournalistField, list[str]]:
     """Typed default factory for topics collected."""
     return {}
@@ -641,6 +655,7 @@ def empty_stories_collected() -> dict[str, StoryDraft]:
 
 
 def empty_reporters() -> dict[str, JournalistField]:
+def empty_reporters() -> dict[str, JournalistField]:
     """Typed default factory for active reporters."""
     return {}
 
@@ -654,6 +669,7 @@ class AssignTopicsResult(BaseModel):
     """Result of topic selection and assignment."""
     reasoning: str  # Overall selection strategy (FIRST)
     assignments: list[TopicAssignment]  # Topics that will spawn reporters
+    rejected_topics: dict[JournalistField, list[str]] = Field(
     rejected_topics: dict[JournalistField, list[str]] = Field(
         default_factory=_empty_rejected_topics)
     success: bool
@@ -760,6 +776,7 @@ class CollectStoryParams(BaseModel):
     """Parameters for collecting a story from a reporter."""
     reporter_id: str
     field: JournalistField
+    field: JournalistField
     sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None
     topic: str
     guidelines: str | None = None
@@ -815,6 +832,8 @@ Returns: CollectStoryResult with the story draft
             normalized_topic = _normalize_topic_name(params.topic)
 
             # Create story task
+            task = JournalistTask(
+                agent_type=AgentType.REPORTER,
             task = JournalistTask(
                 agent_type=AgentType.REPORTER,
                 name=TaskType.WRITE_STORY,
@@ -1089,6 +1108,7 @@ Returns: PublishStoryResult with publication status
             )
 
     async def _generate_and_save_story_images(self, title: str, field: JournalistField, story_id: str) -> list[StoryImage]:
+    async def _generate_and_save_story_images(self, title: str, field: JournalistField, story_id: str) -> list[StoryImage]:
         """Generate images using the image generation tool and save to local storage.
 
         Args:
@@ -1187,6 +1207,7 @@ Returns: PublishStoryResult with publication status
             return []
 
     def _create_image_prompt(self, title: str, field: JournalistField) -> str:
+    def _create_image_prompt(self, title: str, field: JournalistField) -> str:
         """Create an image generation prompt based on story title and field.
 
         Args:
@@ -1197,6 +1218,9 @@ Returns: PublishStoryResult with publication status
             Image generation prompt
         """
         field_styles = {
+            JournalistField.TECHNOLOGY: "modern technology, digital innovation, sleek design",
+            JournalistField.SCIENCE: "scientific research, laboratory setting, discovery theme",
+            JournalistField.ECONOMICS: "business analytics, financial data, corporate environment"
             JournalistField.TECHNOLOGY: "modern technology, digital innovation, sleek design",
             JournalistField.SCIENCE: "scientific research, laboratory setting, discovery theme",
             JournalistField.ECONOMICS: "business analytics, financial data, corporate environment"
