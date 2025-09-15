@@ -1,5 +1,6 @@
 """Reporter agent prompt building and formatting."""
 
+import datetime
 from agents.models.story_models import AgentResponse, ResearchResult, StoryDraft, TopicList
 from agents.models.task_models import ReporterTask
 from agents.reporter_agent.reporter_state import ReporterState, TaskPhase
@@ -196,6 +197,8 @@ Your role is to research and write news stories in your field of expertise.
         base_prompt += f"""
 
 # REPORTING STANDARDS
+TODAY IS {datetime.datetime.now().strftime('%B %d, %Y')}
+When writing queries 
 1. Write in an objective, journalistic style
 2. Use the inverted pyramid structure (most important information first)
 3. Include direct quotes when possible

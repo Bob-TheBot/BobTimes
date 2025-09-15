@@ -69,7 +69,7 @@ PARAMETER SCHEMA:
 
 CORRECT USAGE EXAMPLES:
 {{"query": "AI tools technology trends", "search_type": "news", "time_limit": "w", "max_results": 5}}
-{{"query": "OpenAI GPT-4 release", "search_type": "news", "time_limit": "d"}}
+{{"query": "OpenAI GPT release", "search_type": "news", "time_limit": "d"}}
 {{"query": "machine learning background", "search_type": "text", "max_results": 3}}
 
 USAGE GUIDELINES:
