@@ -19,6 +19,21 @@ By the end of this lab, you will:
 - ✅ Understanding of the editor-reporter workflow
 - ✅ Basic knowledge of file-based persistence
 
+## What You Will Build (Goal)
+
+In this lab, you will give the editor a lightweight, file‑backed memory of recently covered topics and use it to prevent duplicate coverage by injecting a FORBIDDEN TOPICS block into reporter task guidelines.
+
+Success criteria:
+- A JSON file at data/topics/covered_topics.json is created and updated
+- Reporter tasks include a FORBIDDEN TOPICS block in guidelines
+- After publishing a story, its topic is appended to memory
+- A quick test prints forbidden topics and similarity results
+
+You will implement:
+- Topic memory models and a TopicMemoryService (file-based persistence)
+- Editor-side helper that injects forbidden topics into ReporterTask.guidelines
+- Small tests and a utility script to inspect/manage the memory
+
 ## 🚀 Step 1: Design the Topic Memory System
 
 ### 1.1 Topic Memory Architecture
@@ -27,7 +42,7 @@ The system will work as follows:
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Editor Agent │────│ Forbidden Topics │────│ Topic Memory    │
+│   Editor Agent  │────│ Forbidden Topics │────│ Topic Memory    │
 │                 │    │      Tool        │    │     File        │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
          │                        │                       │
@@ -49,32 +64,34 @@ The system will work as follows:
     {
       "title": "OpenAI GPT-5 Release",
       "description": "Coverage of OpenAI's latest language model release and its capabilities",
-      "field": "technology",
-      "sub_section": "artificial_intelligence",
-      "published_date": "2024-01-15",
-      "story_id": "story-tech-001",
-      "keywords": ["openai", "gpt-5", "ai", "language model"]
+      "date_added": "2024-01-15"
     },
     {
       "title": "Climate Change Impact on Agriculture",
       "description": "Analysis of how rising temperatures affect crop yields globally",
-      "field": "science",
-      "sub_section": "environmental_science",
-      "published_date": "2024-01-14",
-      "story_id": "story-sci-002",
-      "keywords": ["climate change", "agriculture", "crops", "global warming"]
+      "date_added": "2024-01-14"
     }
   ]
 }
 ```
 
+**Key Design Choices:**
+- Essential fields only: `title`, `description`, `date_added`
+- Simple date-based filtering for recent topics
+- Designed for prompt injection into reporter guidelines
+
 ### 1.3 Workflow Design
 
 1. **Editor Initialization**: Load existing topic memory from file
-2. **Topic Collection**: Reporters request topics, editor filters against forbidden list
-3. **Story Assignment**: Editor assigns unique topics to reporters
-4. **Story Publication**: Editor adds new topics to memory file
+2. **Topic Collection**: Editor gets forbidden topics list and injects it into reporter prompts
+3. **Story Assignment**: Editor assigns unique topics to reporters with forbidden topics in prompt
+4. **Story Publication**: Editor adds new topics to memory file after publication
 5. **Memory Persistence**: Topic memory is saved to file for future sessions
+
+**Key Features:**
+- Forbidden topics are injected directly into reporter prompts
+- Reporters receive forbidden topics as part of their task guidelines
+- Simple prompt injection approach - no complex tool orchestration needed
 
 ## 🔧 Step 2: Create Topic Memory Models
 
@@ -86,33 +103,14 @@ Create the file `libs/common/utils/topic_memory_models.py`:
 """Topic memory models for editorial content management."""
 
 from datetime import datetime
-from enum import StrEnum
-from typing import Optional
-
-from agents.types import ReporterField, TechnologySubSection, ScienceSubSection, EconomicsSubSection
 from pydantic import BaseModel, Field
 
 
-class TopicStatus(StrEnum):
-    """Status of a covered topic."""
-    PUBLISHED = "published"
-    IN_PROGRESS = "in_progress"
-    ARCHIVED = "archived"
-
-
 class CoveredTopic(BaseModel):
-    """Represents a topic that has been covered or is being covered."""
+    """Represents a topic that has been covered."""
     title: str = Field(description="Title of the covered topic")
-    description: str = Field(description="One-line description of the topic coverage")
-    field: ReporterField = Field(description="News field (technology, science, economics)")
-    sub_section: Optional[TechnologySubSection | ScienceSubSection | EconomicsSubSection] = Field(
-        None, description="Sub-section within the field"
-    )
-    published_date: str = Field(description="Date when topic was published (YYYY-MM-DD)")
-    story_id: str = Field(description="Unique identifier for the story")
-    keywords: list[str] = Field(default_factory=list, description="Keywords associated with the topic")
-    status: TopicStatus = Field(default=TopicStatus.PUBLISHED, description="Current status of the topic")
-    similarity_threshold: float = Field(default=0.8, description="Similarity threshold for duplicate detection")
+    description: str = Field(description="Brief description of the topic coverage")
+    date_added: str = Field(description="Date when topic was added to memory (YYYY-MM-DD)")
 
 
 class TopicMemory(BaseModel):
@@ -120,50 +118,24 @@ class TopicMemory(BaseModel):
     last_updated: datetime = Field(default_factory=datetime.now, description="Last update timestamp")
     topics: list[CoveredTopic] = Field(default_factory=list, description="List of covered topics")
     total_topics: int = Field(default=0, description="Total number of topics tracked")
-    
+
     def model_post_init(self, __context) -> None:
         """Update total count after initialization."""
         self.total_topics = len(self.topics)
-    
+
     def add_topic(self, topic: CoveredTopic) -> None:
         """Add a new topic to memory."""
         self.topics.append(topic)
         self.total_topics = len(self.topics)
         self.last_updated = datetime.now()
-    
-    def get_topics_by_field(self, field: ReporterField) -> list[CoveredTopic]:
-        """Get all topics for a specific field."""
-        return [topic for topic in self.topics if topic.field == field]
-    
+
     def get_recent_topics(self, days: int = 30) -> list[CoveredTopic]:
-        """Get topics published within the last N days."""
+        """Get topics added within the last N days."""
         from datetime import datetime, timedelta
         cutoff_date = datetime.now() - timedelta(days=days)
         cutoff_str = cutoff_date.strftime("%Y-%m-%d")
-        
-        return [topic for topic in self.topics if topic.published_date >= cutoff_str]
 
-
-class ForbiddenTopicsParams(BaseModel):
-    """Parameters for forbidden topics tool operations."""
-    operation: str = Field(description="Operation: 'get_forbidden', 'add_topic', or 'check_similarity'")
-    field: Optional[ReporterField] = Field(None, description="Field to filter topics (optional)")
-    days_back: int = Field(default=30, description="Days to look back for recent topics")
-    new_topic: Optional[CoveredTopic] = Field(None, description="New topic to add (for add_topic operation)")
-    proposed_topics: list[str] = Field(default_factory=list, description="Topics to check for similarity")
-
-
-class ForbiddenTopicsResult(BaseModel):
-    """Result from forbidden topics tool execution."""
-    success: bool = Field(description="Whether the operation was successful")
-    operation: str = Field(description="Operation that was performed")
-    forbidden_topics: list[str] = Field(default_factory=list, description="List of forbidden topic titles")
-    forbidden_descriptions: list[str] = Field(default_factory=list, description="List of forbidden topic descriptions")
-    similar_topics: dict[str, list[str]] = Field(default_factory=dict, description="Similar topics found for each proposed topic")
-    topics_added: int = Field(default=0, description="Number of topics added to memory")
-    total_topics_in_memory: int = Field(default=0, description="Total topics currently in memory")
-    summary: str = Field(description="Summary of the operation results")
-    error: Optional[str] = Field(None, description="Error message if operation failed")
+        return [topic for topic in self.topics if topic.date_added >= cutoff_str]
 ```
 
 ### 2.2 Create Topic Memory Service
@@ -180,28 +152,28 @@ from typing import Optional
 from core.config_service import ConfigService
 from core.logging_service import get_logger
 
-from .topic_memory_models import TopicMemory, CoveredTopic, TopicStatus
+from .topic_memory_models import TopicMemory, CoveredTopic
 
 logger = get_logger(__name__)
 
 
 class TopicMemoryService:
     """Service for managing topic memory and preventing content duplication."""
-    
+
     def __init__(self, config_service: ConfigService):
         """Initialize topic memory service."""
         self.config_service = config_service
         self.memory_file_path = Path("data/topics/covered_topics.json")
         self.memory: Optional[TopicMemory] = None
-        
+
         # Ensure directory exists
         self.memory_file_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Load existing memory
         self._load_memory()
-        
+
         logger.info(f"Topic memory service initialized with {self.memory.total_topics} topics")
-    
+
     def _load_memory(self) -> None:
         """Load topic memory from file."""
         try:
@@ -216,7 +188,7 @@ class TopicMemoryService:
         except Exception as e:
             logger.error(f"Failed to load topic memory: {e}")
             self.memory = TopicMemory()
-    
+
     def _save_memory(self) -> None:
         """Save topic memory to file."""
         try:
@@ -225,7 +197,7 @@ class TopicMemoryService:
             logger.info(f"Saved topic memory with {self.memory.total_topics} topics")
         except Exception as e:
             logger.error(f"Failed to save topic memory: {e}")
-    
+
     def add_topic(self, topic: CoveredTopic) -> bool:
         """Add a new topic to memory and save to file."""
         try:
@@ -236,477 +208,233 @@ class TopicMemoryService:
         except Exception as e:
             logger.error(f"Failed to add topic to memory: {e}")
             return False
-    
-    def get_forbidden_topics(self, field: Optional[str] = None, days_back: int = 30) -> list[CoveredTopic]:
+
+    def get_forbidden_topics(self, days_back: int = 30) -> list[CoveredTopic]:
         """Get list of topics that should be avoided."""
-        if field:
-            from agents.types import ReporterField
-            field_enum = ReporterField(field)
-            recent_topics = self.memory.get_recent_topics(days_back)
-            return [topic for topic in recent_topics if topic.field == field_enum]
-        else:
-            return self.memory.get_recent_topics(days_back)
-    
+        return self.memory.get_recent_topics(days_back)
+
     def check_topic_similarity(self, proposed_topics: list[str]) -> dict[str, list[str]]:
-        """Check if proposed topics are similar to existing ones."""
+        """Check if proposed topics are similar to existing ones using simple word matching."""
         similar_topics = {}
-        
+
         for proposed in proposed_topics:
             similar = []
             proposed_lower = proposed.lower()
-            
+
             for existing_topic in self.memory.topics:
                 existing_lower = existing_topic.title.lower()
-                
-                # Simple similarity check - can be enhanced with more sophisticated algorithms
+
+                # Simple similarity check using word overlap
                 if self._calculate_similarity(proposed_lower, existing_lower) > 0.7:
                     similar.append(existing_topic.title)
-                
-                # Also check against keywords
-                for keyword in existing_topic.keywords:
-                    if keyword.lower() in proposed_lower or proposed_lower in keyword.lower():
-                        if existing_topic.title not in similar:
-                            similar.append(existing_topic.title)
-            
+
             similar_topics[proposed] = similar
-        
+
         return similar_topics
-    
+
     def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """Calculate simple similarity between two text strings."""
-        # Simple word overlap similarity - can be enhanced with more sophisticated methods
+        """Calculate simple similarity between two text strings using word overlap."""
         words1 = set(text1.split())
         words2 = set(text2.split())
-        
+
         if not words1 or not words2:
             return 0.0
-        
+
         intersection = words1.intersection(words2)
         union = words1.union(words2)
-        
+
         return len(intersection) / len(union) if union else 0.0
-    
+
     def get_memory_stats(self) -> dict:
         """Get statistics about the topic memory."""
-        from collections import Counter
-        
-        field_counts = Counter(topic.field.value for topic in self.memory.topics)
-        status_counts = Counter(topic.status.value for topic in self.memory.topics)
-        
         return {
             "total_topics": self.memory.total_topics,
             "last_updated": self.memory.last_updated.isoformat(),
-            "topics_by_field": dict(field_counts),
-            "topics_by_status": dict(status_counts),
             "recent_topics_30_days": len(self.memory.get_recent_topics(30)),
             "recent_topics_7_days": len(self.memory.get_recent_topics(7))
         }
+
+    def get_forbidden_topics_as_text(self, days_back: int = 30) -> str:
+        """Get forbidden topics formatted as text for injection into reporter prompts."""
+        forbidden_topics = self.get_forbidden_topics(days_back)
+
+        if not forbidden_topics:
+            return "No recent topics to avoid."
+
+        text_lines = ["FORBIDDEN TOPICS (avoid these recent topics):"]
+        for topic in forbidden_topics:
+            text_lines.append(f"- {topic.title}: {topic.description}")
+
+        return "\n".join(text_lines)
 ```
 
-This is the foundation of our topic memory system. In the next steps, we'll create the forbidden topics tool and integrate it with the editor agent workflow.
+This is the foundation of our topic memory system. The key features are:
+- Clean data structure with only essential fields
+- All topics are treated equally for maximum simplicity
+- Forbidden topics are injected into reporter prompts
+- Focus on effective deduplication with minimal complexity
 
 ## 🔄 Next Steps Preview
 
 In the remaining steps, we will:
-- Create the ForbiddenTopicsTool for the editor agent
-- Update the editor agent to use topic memory
-- Modify the reporter workflow to respect forbidden topics
+- Update the editor agent to use topic memory for prompt injection
+- Modify the reporter workflow to receive forbidden topics in prompts
 - Test the complete deduplication system
 - Create management utilities for topic memory
 
 Ready to continue building the editorial intelligence system!
 
-## 🛠️ Step 3: Create Forbidden Topics Tool
+## 🛠️ Step 3: Update Editor Agent for Prompt Injection
 
-### 3.1 Create the Forbidden Topics Tool
+### 3.1 Modify Editor Agent to Inject Forbidden Topics
 
-Create the file `libs/common/utils/forbidden_topics_tool.py`:
+Instead of creating a complex tool, the editor will simply inject forbidden topics into reporter prompts:
 
 ```python
-"""Forbidden topics tool for editor agent to manage content deduplication."""
+"""Editor agent integration with topic memory."""
 
 from datetime import datetime
-from typing import Any
-
-from agents.tools.base_tool import BaseTool
-from agents.types import ReporterField
-from core.config_service import ConfigService
-from core.llm_service import ModelSpeed
-from core.logging_service import get_logger
-from pydantic import BaseModel
-
-from .topic_memory_models import ForbiddenTopicsParams, ForbiddenTopicsResult, CoveredTopic, TopicStatus
-from .topic_memory_service import TopicMemoryService
-
-logger = get_logger(__name__)
+from agents.models.task_models import ReporterTask
+from agents.types import TaskType, ReporterField
+from utils.topic_memory_service import TopicMemoryService
+from utils.topic_memory_models import CoveredTopic
 
 
-class ForbiddenTopicsTool(BaseTool):
-    """Tool for managing forbidden topics and preventing content duplication."""
+class EditorAgentWithMemory:
+    """Editor agent enhanced with topic memory for deduplication."""
 
-    def __init__(self, config_service: ConfigService | None = None):
-        """Initialize forbidden topics tool."""
-        name = "forbidden_topics"
-        description = f"""
-Manage forbidden topics to prevent content duplication and maintain editorial consistency.
+    def __init__(self, config_service):
+        """Initialize editor with topic memory service."""
+        self.topic_memory = TopicMemoryService(config_service)
 
-PARAMETER SCHEMA:
-{ForbiddenTopicsParams.model_json_schema()}
+    def create_reporter_task_with_forbidden_topics(
+        self,
+        task_type: TaskType,
+        field: ReporterField,
+        description: str,
+        days_back: int = 30
+    ) -> ReporterTask:
+        """Create a reporter task with forbidden topics injected into guidelines."""
 
-CORRECT USAGE EXAMPLES:
-# Get forbidden topics for a specific field
-{{"operation": "get_forbidden", "field": "technology", "days_back": 30}}
+        # Get forbidden topics as formatted text
+        forbidden_text = self.topic_memory.get_forbidden_topics_as_text(days_back)
 
-# Add a new published topic to memory
-{{"operation": "add_topic", "new_topic": {{"title": "AI Breakthrough", "description": "Coverage of new AI model", "field": "technology", "published_date": "2024-01-15", "story_id": "story-001", "keywords": ["ai", "breakthrough"]}}}}
+        # Create enhanced guidelines with forbidden topics
+        enhanced_guidelines = f"""
+{description}
 
-# Check if proposed topics are similar to existing ones
-{{"operation": "check_similarity", "proposed_topics": ["New AI Development", "Machine Learning Advances"]}}
+{forbidden_text}
 
-OPERATIONS:
-- get_forbidden: Get list of topics to avoid (recent topics in specified field)
-- add_topic: Add a newly published topic to the memory system
-- check_similarity: Check if proposed topics are too similar to existing ones
-
-USAGE GUIDELINES:
-- Use get_forbidden before assigning topics to reporters
-- Use add_topic after publishing stories to update memory
-- Use check_similarity to validate topic uniqueness
-- Set days_back to control how far back to look for forbidden topics
-- Always provide field when getting forbidden topics for specific reporters
-
-RETURNS:
-- forbidden_topics: List of topic titles to avoid
-- forbidden_descriptions: List of topic descriptions for context
-- similar_topics: Dictionary mapping proposed topics to similar existing ones
-- summary: Summary of operation results
-
-This tool maintains editorial memory and prevents content duplication across news cycles.
+IMPORTANT: Ensure your proposed topics are unique and not similar to the forbidden topics listed above.
+Focus on fresh angles and new developments that haven't been covered recently.
 """
-        super().__init__(name=name, description=description)
-        self.params_model = ForbiddenTopicsParams
-        self.config_service = config_service or ConfigService()
 
-        # Initialize topic memory service
-        try:
-            self.topic_memory = TopicMemoryService(self.config_service)
-        except Exception as e:
-            logger.error(f"Failed to initialize topic memory service: {e}")
-            self.topic_memory = None
+        return ReporterTask(
+            name=task_type,
+            field=field,
+            description=description,
+            guidelines=enhanced_guidelines.strip()
+        )
 
-    async def execute(self, params: BaseModel, model_speed: ModelSpeed = ModelSpeed.FAST) -> ForbiddenTopicsResult:
-        """Execute forbidden topics operation."""
-        if not isinstance(params, ForbiddenTopicsParams):
-            return ForbiddenTopicsResult(
-                success=False,
-                operation="unknown",
-                error=f"Expected ForbiddenTopicsParams, got {type(params)}"
-            )
+    def add_published_story_to_memory(self, title: str, description: str) -> bool:
+        """Add a published story to topic memory."""
+        topic = CoveredTopic(
+            title=title,
+            description=description,
+            date_added=datetime.now().strftime("%Y-%m-%d")
+        )
 
-        if not self.topic_memory:
-            return ForbiddenTopicsResult(
-                success=False,
-                operation=params.operation,
-                error="Topic memory service not available"
-            )
+        return self.topic_memory.add_topic(topic)
 
-        try:
-            if params.operation == "get_forbidden":
-                return await self._get_forbidden_topics(params)
-            elif params.operation == "add_topic":
-                return await self._add_topic(params)
-            elif params.operation == "check_similarity":
-                return await self._check_similarity(params)
-            else:
-                return ForbiddenTopicsResult(
-                    success=False,
-                    operation=params.operation,
-                    error=f"Unknown operation: {params.operation}"
-                )
 
-        except Exception as e:
-            logger.error(f"Forbidden topics tool execution failed: {e}")
-            return ForbiddenTopicsResult(
-                success=False,
-                operation=params.operation,
-                error=str(e)
-            )
+# Example usage in editor workflow:
+"""
+editor = EditorAgentWithMemory(config_service)
 
-    async def _get_forbidden_topics(self, params: ForbiddenTopicsParams) -> ForbiddenTopicsResult:
-        """Get list of forbidden topics for a field."""
-        try:
-            field_str = params.field.value if params.field else None
-            forbidden_topics = self.topic_memory.get_forbidden_topics(field_str, params.days_back)
+# When creating reporter tasks:
+task = editor.create_reporter_task_with_forbidden_topics(
+    task_type=TaskType.FIND_TOPICS,
+    field=ReporterField.TECHNOLOGY,
+    description="Find 3 trending topics in technology",
+    days_back=30
+)
 
-            titles = [topic.title for topic in forbidden_topics]
-            descriptions = [f"{topic.title}: {topic.description}" for topic in forbidden_topics]
-
-            field_desc = f" in {params.field.value}" if params.field else ""
-            summary = f"Found {len(forbidden_topics)} forbidden topics{field_desc} from last {params.days_back} days"
-
-            return ForbiddenTopicsResult(
-                success=True,
-                operation="get_forbidden",
-                forbidden_topics=titles,
-                forbidden_descriptions=descriptions,
-                total_topics_in_memory=self.topic_memory.memory.total_topics,
-                summary=summary
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to get forbidden topics: {e}")
-            return ForbiddenTopicsResult(
-                success=False,
-                operation="get_forbidden",
-                error=str(e)
-            )
-
-    async def _add_topic(self, params: ForbiddenTopicsParams) -> ForbiddenTopicsResult:
-        """Add a new topic to the memory system."""
-        try:
-            if not params.new_topic:
-                return ForbiddenTopicsResult(
-                    success=False,
-                    operation="add_topic",
-                    error="No new_topic provided for add_topic operation"
-                )
-
-            success = self.topic_memory.add_topic(params.new_topic)
-
-            if success:
-                return ForbiddenTopicsResult(
-                    success=True,
-                    operation="add_topic",
-                    topics_added=1,
-                    total_topics_in_memory=self.topic_memory.memory.total_topics,
-                    summary=f"Successfully added topic '{params.new_topic.title}' to memory"
-                )
-            else:
-                return ForbiddenTopicsResult(
-                    success=False,
-                    operation="add_topic",
-                    error="Failed to add topic to memory"
-                )
-
-        except Exception as e:
-            logger.error(f"Failed to add topic: {e}")
-            return ForbiddenTopicsResult(
-                success=False,
-                operation="add_topic",
-                error=str(e)
-            )
-
-    async def _check_similarity(self, params: ForbiddenTopicsParams) -> ForbiddenTopicsResult:
-        """Check similarity of proposed topics against existing ones."""
-        try:
-            if not params.proposed_topics:
-                return ForbiddenTopicsResult(
-                    success=False,
-                    operation="check_similarity",
-                    error="No proposed_topics provided for check_similarity operation"
-                )
-
-            similar_topics = self.topic_memory.check_topic_similarity(params.proposed_topics)
-
-            total_similar = sum(len(similar) for similar in similar_topics.values())
-            summary = f"Checked {len(params.proposed_topics)} proposed topics, found {total_similar} potential conflicts"
-
-            return ForbiddenTopicsResult(
-                success=True,
-                operation="check_similarity",
-                similar_topics=similar_topics,
-                total_topics_in_memory=self.topic_memory.memory.total_topics,
-                summary=summary
-            )
-
-        except Exception as e:
-            logger.error(f"Failed to check similarity: {e}")
-            return ForbiddenTopicsResult(
-                success=False,
-                operation="check_similarity",
-                error=str(e)
-            )
+# After publishing a story:
+editor.add_published_story_to_memory(
+    title="New AI Breakthrough at OpenAI",
+    description="OpenAI announces major advancement in language models"
+)
+"""
 ```
 
-### 3.2 Register the Tool with Editor Agent
-
-Update the editor agent to include the forbidden topics tool. In `libs/common/agents/editor_agent/editor_agent_main.py`, add:
+#### 3.1b Minimal example (uses current ReporterTask)
 
 ```python
-# Add import
-from utils.forbidden_topics_tool import ForbiddenTopicsTool
+from core.config_service import ConfigService
+from agents.models.task_models import ReporterTask
+from agents.types import TaskType, ReporterField
+from utils.topic_memory_service import TopicMemoryService
 
-# In the EditorAgent __init__ method, add the tool:
-config = AgentConfig(
-    system_prompt="Editor agent placeholder - will be updated after initialization",
-    temperature=0.5,
-    default_model_speed=ModelSpeed.SLOW,
-    tools=[
-        CollectTopicsTool(task_executor=task_service),
-        AssignTopicsTool(task_executor=task_service),
-        CollectStoryTool(task_executor=task_service),
-        ReviewStoryTool(task_executor=task_service),
-        PublishStoryTool(task_executor=task_service),
-        ForbiddenTopicsTool(config_service)  # Add forbidden topics tool
-    ]
+config = ConfigService()
+### 3.3 Integrate Forbidden Topics in Current Editor Orchestration (no structural changes)
+
+Inject the FORBIDDEN TOPICS text when creating reporter tasks inside the existing CollectTopicsTool. This requires no class/interface changes.
+
+Example (excerpt to adapt in agents/editor_agent/editor_tools.py):
+<augment_code_snippet path="libs/common/agents/editor_agent/editor_tools.py" mode="EXCERPT">
+````python
+config = ConfigService()
+forbidden = TopicMemoryService(config).get_forbidden_topics_as_text(days_back=30)
+base = "Focus on current, newsworthy topics with broad appeal"
+guidelines = f"{base}\n\n{forbidden}\n\nIMPORTANT: Avoid duplicates."
+
+task = ReporterTask(
+    name=TaskType.FIND_TOPICS,
+    field=request.field,
+    sub_section=request.sub_section,
+    description=f"Find {params.topics_per_field} trending topics in {request.field.value}{sub_section_desc}",
+    guidelines=guidelines,
+)
+````
+</augment_code_snippet>
+
+This integrates topic memory into reporter task guidelines without changing the editor or tool interfaces.
+
+memory = TopicMemoryService(config)
+forbidden = memory.get_forbidden_topics_as_text(days_back=30)
+
+task = ReporterTask(
+    name=TaskType.FIND_TOPICS,
+    field=ReporterField.TECHNOLOGY,
+    description="Find 3 trending topics in technology",
+    sub_section=None,
+    guidelines=f"{forbidden}\n\nEnsure your topics are unique.",
+    min_sources=1,
+    target_word_count=0,
+    require_images=False,
 )
 ```
 
-## 🧪 Step 4: Test Topic Memory System
 
-### 4.1 Create Topic Memory Test Script
+### 3.2 Update Editor Agent System Prompt
 
-Create a test script to verify the topic memory system works:
-
-```python
-# Create file: test_topic_memory.py
-"""Test script for topic memory system."""
-
-import asyncio
-from datetime import datetime
-
-from agents.types import ReporterField
-from core.config_service import ConfigService
-from utils.forbidden_topics_tool import ForbiddenTopicsTool, ForbiddenTopicsParams
-from utils.topic_memory_models import CoveredTopic, TopicStatus
-
-
-async def test_topic_memory():
-    """Test the topic memory system."""
-    print("🧠 Topic Memory System Test")
-    print("=" * 40)
-
-    config_service = ConfigService()
-    forbidden_tool = ForbiddenTopicsTool(config_service)
-
-    # Test 1: Add some sample topics
-    print("\n1️⃣ Adding sample topics...")
-
-    sample_topics = [
-        CoveredTopic(
-            title="OpenAI GPT-5 Release",
-            description="Coverage of OpenAI's latest language model and its capabilities",
-            field=ReporterField.TECHNOLOGY,
-            published_date="2024-01-15",
-            story_id="story-tech-001",
-            keywords=["openai", "gpt-5", "ai", "language model"]
-        ),
-        CoveredTopic(
-            title="Climate Change Impact on Agriculture",
-            description="Analysis of rising temperatures affecting global crop yields",
-            field=ReporterField.SCIENCE,
-            published_date="2024-01-14",
-            story_id="story-sci-001",
-            keywords=["climate change", "agriculture", "crops"]
-        ),
-        CoveredTopic(
-            title="Federal Reserve Interest Rate Decision",
-            description="Analysis of the Fed's latest monetary policy changes",
-            field=ReporterField.ECONOMICS,
-            published_date="2024-01-13",
-            story_id="story-econ-001",
-            keywords=["federal reserve", "interest rates", "monetary policy"]
-        )
-    ]
-
-    for topic in sample_topics:
-        params = ForbiddenTopicsParams(
-            operation="add_topic",
-            new_topic=topic
-        )
-        result = await forbidden_tool.execute(params)
-
-        if result.success:
-            print(f"   ✅ Added: {topic.title}")
-        else:
-            print(f"   ❌ Failed to add: {topic.title} - {result.error}")
-
-    # Test 2: Get forbidden topics for technology field
-    print("\n2️⃣ Getting forbidden topics for technology field...")
-
-    params = ForbiddenTopicsParams(
-        operation="get_forbidden",
-        field=ReporterField.TECHNOLOGY,
-        days_back=30
-    )
-    result = await forbidden_tool.execute(params)
-
-    if result.success:
-        print(f"   ✅ Found {len(result.forbidden_topics)} forbidden topics")
-        for topic in result.forbidden_topics:
-            print(f"      - {topic}")
-    else:
-        print(f"   ❌ Failed: {result.error}")
-
-    # Test 3: Check similarity for proposed topics
-    print("\n3️⃣ Checking similarity for proposed topics...")
-
-    proposed_topics = [
-        "OpenAI's New AI Model Launch",  # Should be similar to existing
-        "Quantum Computing Breakthrough",  # Should be unique
-        "Climate Effects on Farming"  # Should be similar to existing
-    ]
-
-    params = ForbiddenTopicsParams(
-        operation="check_similarity",
-        proposed_topics=proposed_topics
-    )
-    result = await forbidden_tool.execute(params)
-
-    if result.success:
-        print(f"   ✅ Similarity check completed")
-        for proposed, similar in result.similar_topics.items():
-            if similar:
-                print(f"      ⚠️  '{proposed}' is similar to: {similar}")
-            else:
-                print(f"      ✅ '{proposed}' is unique")
-    else:
-        print(f"   ❌ Failed: {result.error}")
-
-    # Test 4: Get memory statistics
-    print("\n4️⃣ Memory statistics...")
-    if forbidden_tool.topic_memory:
-        stats = forbidden_tool.topic_memory.get_memory_stats()
-        print(f"   📊 Total topics: {stats['total_topics']}")
-        print(f"   📊 Topics by field: {stats['topics_by_field']}")
-        print(f"   📊 Recent topics (7 days): {stats['recent_topics_7_days']}")
-        print(f"   📊 Recent topics (30 days): {stats['recent_topics_30_days']}")
-
-    print("\n🎉 Topic memory test completed!")
-
-
-if __name__ == "__main__":
-    asyncio.run(test_topic_memory())
-```
-
-### 4.2 Run the Test
-
-```bash
-# In DevContainer terminal
-python test_topic_memory.py
-```
-
-## 🔗 Step 5: Integrate with Editor Workflow
-
-### 5.1 Update Editor System Prompt
-
-The editor agent needs to be aware of its new responsibility. Update the editor's system prompt to include topic memory management:
+Update the editor agent's system prompt to include topic memory responsibilities:
 
 ```python
-# In libs/common/agents/editor_agent/editor_prompt.py (or wherever editor prompts are defined)
+# In libs/common/agents/editor_agent/editor_prompt.py
 
 EDITOR_SYSTEM_PROMPT = """
 You are the Editor-in-Chief of BobTimes, an AI-powered newspaper. Your responsibilities include:
 
 1. **Topic Collection & Deduplication**:
-   - Use the forbidden_topics tool to get recent topics before assigning new ones
+   - Before assigning topics to reporters, check recent topic memory
+   - Inject forbidden topics directly into reporter task guidelines
    - Ensure no topic repetition within the last 30 days
-   - Check similarity of proposed topics against existing coverage
 
 2. **Story Assignment**:
-   - Assign unique, non-duplicate topics to reporter agents
-   - Provide forbidden topics list to reporters to avoid duplication
+   - Create reporter tasks with forbidden topics included in guidelines
    - Ensure diverse coverage across different fields
+   - Provide clear instructions to avoid duplicate content
 
 3. **Editorial Review**:
    - Review story drafts for quality and accuracy
@@ -715,209 +443,372 @@ You are the Editor-in-Chief of BobTimes, an AI-powered newspaper. Your responsib
 
 4. **Publication Management**:
    - Publish approved stories
-   - Add published topics to memory using forbidden_topics tool
+   - Add published topics to memory for future deduplication
    - Maintain editorial consistency across news cycles
 
-**TOPIC MEMORY WORKFLOW:**
-1. Before collecting topics: Use forbidden_topics tool with operation="get_forbidden"
-2. When assigning topics: Include forbidden topics list in reporter instructions
-3. After publishing stories: Use forbidden_topics tool with operation="add_topic"
-
-**AVAILABLE TOOLS:**
-- forbidden_topics: Manage topic memory and prevent duplication
-- collect_topics: Get trending topics from reporters
-- assign_topics: Assign specific topics to reporters
-- collect_story: Get completed stories from reporters
-- review_story: Review and provide feedback on stories
-- publish_story: Publish approved stories
+**WORKFLOW:**
+1. Before creating reporter tasks: Get forbidden topics from memory
+2. When creating tasks: Inject forbidden topics into task guidelines
+3. After publishing stories: Add new topics to memory
 
 Always prioritize content uniqueness and editorial quality.
 """
 ```
 
-### 5.2 Update Reporter Instructions
+## 🧪 Step 4: Test Topic Memory System
 
-Modify how the editor communicates with reporters to include forbidden topics. Update the topic assignment process:
+### 4.1 Quick Check: Print Forbidden Topics (inline)
 
-```python
-# In libs/common/agents/editor_agent/editor_tools.py
-
-# Update the AssignTopicsTool to include forbidden topics
-class AssignTopicsParams(BaseModel):
-    """Parameters for assigning topics to reporters."""
-    field_requests: list[FieldTopicRequest]
-    topics_per_field: int = Field(default=3, description="Number of topics per field")
-    forbidden_topics: list[str] = Field(default_factory=list, description="Topics to avoid")
-    forbidden_descriptions: list[str] = Field(default_factory=list, description="Descriptions of forbidden topics")
-
-# Update the task creation to include forbidden topics
-task = ReporterTask(
-    name=TaskType.FIND_TOPICS,
-    field=request.field,
-    sub_section=request.sub_section,
-    description=f"Find {params.topics_per_field} trending topics in {request.field.value}{sub_section_desc}",
-    guidelines=f"""Focus on current, newsworthy topics with broad appeal.
-
-FORBIDDEN TOPICS (avoid these recent topics):
-{chr(10).join(f"- {topic}" for topic in params.forbidden_topics)}
-
-FORBIDDEN TOPIC DESCRIPTIONS:
-{chr(10).join(f"- {desc}" for desc in params.forbidden_descriptions)}
-
-Ensure your proposed topics are unique and not similar to the forbidden topics listed above."""
-)
-```
-
-### 5.3 Create Enhanced Editor Workflow
-
-Create a script that demonstrates the complete workflow:
+Paste the following into a Python shell (e.g., uv run python) to quickly verify the topic memory service:
 
 ```python
-# Create file: test_editor_workflow.py
-"""Test the complete editor workflow with topic memory."""
+"""Quick check for topic memory system (run inline)."""
 
 import asyncio
 from datetime import datetime
 
-from agents.agent_factory import AgentFactory
-from agents.models.task_models import ReporterTask
-from agents.task_execution_service import TaskExecutionService
-from agents.types import ReporterField, TaskType
 from core.config_service import ConfigService
-from utils.forbidden_topics_tool import ForbiddenTopicsTool, ForbiddenTopicsParams
+from utils.topic_memory_service import TopicMemoryService
 from utils.topic_memory_models import CoveredTopic
 
 
-async def test_complete_workflow():
-    """Test the complete editor workflow with topic memory."""
-    print("🗞️ Complete Editor Workflow Test")
-    print("=" * 50)
+async def test_topic_memory():
+    """Test the topic memory system."""
+    print("🧠 Topic Memory System Test")
+    print("=" * 40)
 
     config_service = ConfigService()
-    task_service = TaskExecutionService(config_service)
-    factory = AgentFactory(config_service, task_service)
+    memory_service = TopicMemoryService(config_service)
 
-    # Create editor agent
-    editor = factory.create_editor()
-    forbidden_tool = ForbiddenTopicsTool(config_service)
+    # Test 1: Add some sample topics
+    print("\n1️⃣ Adding sample topics...")
 
-    # Step 1: Check current forbidden topics
-    print("\n1️⃣ Checking current forbidden topics...")
-
-    params = ForbiddenTopicsParams(
-        operation="get_forbidden",
-        field=ReporterField.TECHNOLOGY,
-        days_back=30
-    )
-    result = await forbidden_tool.execute(params)
-
-    if result.success:
-        print(f"   📋 Found {len(result.forbidden_topics)} forbidden topics:")
-        for topic in result.forbidden_topics[:3]:  # Show first 3
-            print(f"      - {topic}")
-    else:
-        print(f"   ❌ Failed to get forbidden topics: {result.error}")
-
-    # Step 2: Simulate topic collection with forbidden topics awareness
-    print("\n2️⃣ Collecting topics with forbidden topics awareness...")
-
-    # Create a reporter task that includes forbidden topics
-    task = ReporterTask(
-        name=TaskType.FIND_TOPICS,
-        field=ReporterField.TECHNOLOGY,
-        description="Find 3 trending topics in technology",
-        guidelines=f"""Focus on current, newsworthy topics with broad appeal.
-
-FORBIDDEN TOPICS (avoid these recent topics):
-{chr(10).join(f"- {topic}" for topic in result.forbidden_topics)}
-
-Ensure your proposed topics are unique and not similar to the forbidden topics listed above."""
-    )
-
-    print(f"   📝 Created task with {len(result.forbidden_topics)} forbidden topics")
-
-    # Step 3: Simulate story publication and memory update
-    print("\n3️⃣ Simulating story publication...")
-
-    # Simulate a new story being published
-    new_topic = CoveredTopic(
-        title="Quantum Computing Breakthrough at IBM",
-        description="IBM announces major advancement in quantum error correction",
-        field=ReporterField.TECHNOLOGY,
-        published_date=datetime.now().strftime("%Y-%m-%d"),
-        story_id=f"story-tech-{datetime.now().strftime('%Y%m%d-%H%M%S')}",
-        keywords=["quantum computing", "ibm", "error correction", "breakthrough"]
-    )
-
-    # Add to memory
-    add_params = ForbiddenTopicsParams(
-        operation="add_topic",
-        new_topic=new_topic
-    )
-    add_result = await forbidden_tool.execute(add_params)
-
-    if add_result.success:
-        print(f"   ✅ Added new topic to memory: {new_topic.title}")
-        print(f"   📊 Total topics in memory: {add_result.total_topics_in_memory}")
-    else:
-        print(f"   ❌ Failed to add topic: {add_result.error}")
-
-    # Step 4: Verify the topic is now forbidden
-    print("\n4️⃣ Verifying topic is now in forbidden list...")
-
-    verify_params = ForbiddenTopicsParams(
-        operation="get_forbidden",
-        field=ReporterField.TECHNOLOGY,
-        days_back=1  # Just today
-    )
-    verify_result = await forbidden_tool.execute(verify_params)
-
-    if verify_result.success:
-        if new_topic.title in verify_result.forbidden_topics:
-            print(f"   ✅ New topic is now in forbidden list")
-        else:
-            print(f"   ⚠️  New topic not found in forbidden list")
-        print(f"   📋 Current forbidden topics: {len(verify_result.forbidden_topics)}")
-
-    # Step 5: Test similarity detection
-    print("\n5️⃣ Testing similarity detection...")
-
-    similar_topics = [
-        "IBM's Quantum Computing Advance",  # Should be similar
-        "New Blockchain Technology",  # Should be unique
-        "Quantum Error Correction Progress"  # Should be similar
+    sample_topics = [
+        CoveredTopic(
+            title="OpenAI GPT-5 Release",
+            description="Coverage of OpenAI's latest language model and its capabilities",
+            date_added="2024-01-15"
+        ),
+        CoveredTopic(
+            title="Climate Change Impact on Agriculture",
+            description="Analysis of rising temperatures affecting global crop yields",
+            date_added="2024-01-14"
+        ),
+        CoveredTopic(
+            title="Federal Reserve Interest Rate Decision",
+            description="Analysis of the Fed's latest monetary policy changes",
+            date_added="2024-01-13"
+        )
     ]
 
-    similarity_params = ForbiddenTopicsParams(
-        operation="check_similarity",
-        proposed_topics=similar_topics
-    )
-    similarity_result = await forbidden_tool.execute(similarity_params)
+    for topic in sample_topics:
+        success = memory_service.add_topic(topic)
+        if success:
+            print(f"   ✅ Added: {topic.title}")
+        else:
+            print(f"   ❌ Failed to add: {topic.title}")
 
-    if similarity_result.success:
-        print(f"   🔍 Similarity check results:")
-        for proposed, similar in similarity_result.similar_topics.items():
-            if similar:
-                print(f"      ⚠️  '{proposed}' conflicts with: {similar}")
-            else:
-                print(f"      ✅ '{proposed}' is unique")
+    # Test 2: Get forbidden topics
+    print("\n2️⃣ Getting forbidden topics...")
 
-    print("\n🎉 Complete workflow test finished!")
-    print(f"📊 Final memory stats: {forbidden_tool.topic_memory.get_memory_stats()}")
+    forbidden_topics = memory_service.get_forbidden_topics(days_back=30)
+    print(f"   ✅ Found {len(forbidden_topics)} forbidden topics")
+    for topic in forbidden_topics:
+        print(f"      - {topic.title}")
+
+    # Test 3: Test forbidden topics as text for prompt injection
+    print("\n3️⃣ Getting forbidden topics as formatted text...")
+
+    forbidden_text = memory_service.get_forbidden_topics_as_text(days_back=30)
+    print("   📝 Formatted text for prompt injection:")
+    print(f"   {forbidden_text}")
+
+    # Test 4: Check similarity for proposed topics
+    print("\n4️⃣ Checking similarity for proposed topics...")
+
+    proposed_topics = [
+        "OpenAI's New AI Model Launch",  # Should be similar to existing
+        "Quantum Computing Breakthrough",  # Should be unique
+        "Climate Effects on Farming"  # Should be similar to existing
+    ]
+
+    similar_topics = memory_service.check_topic_similarity(proposed_topics)
+    print(f"   ✅ Similarity check completed")
+    for proposed, similar in similar_topics.items():
+        if similar:
+            print(f"      ⚠️  '{proposed}' is similar to: {similar}")
+        else:
+            print(f"      ✅ '{proposed}' is unique")
+
+    # Test 5: Get memory statistics
+    print("\n5️⃣ Memory statistics...")
+    stats = memory_service.get_memory_stats()
+    print(f"   📊 Total topics: {stats['total_topics']}")
+    print(f"   📊 Recent topics (7 days): {stats['recent_topics_7_days']}")
+    print(f"   📊 Recent topics (30 days): {stats['recent_topics_30_days']}")
+
+    print("\n🎉 Topic memory test completed!")
 
 
-if __name__ == "__main__":
-    asyncio.run(test_complete_workflow())
+# In a Python shell call:
+# import asyncio; asyncio.run(test_topic_memory())
 ```
 
-## 🔧 Step 6: Create Topic Memory Management Utilities
+### 4.2 Run the Quick Check
 
-### 6.1 Create Topic Memory Manager Script
+- Open a Python shell: uv run python
+- Paste the snippet from 4.1
+- Then run: import asyncio; asyncio.run(test_topic_memory())
+
+## 🔗 Step 5: Create Complete Integration Example
+
+### 5.1 Editor Workflow Integration Example (inline)
+
+A complete example showing how the editor integrates with topic memory:
+
+```python
+"""Editor integration with topic memory (inline example)."""
+
+import asyncio
+from datetime import datetime
+
+from core.config_service import ConfigService
+from utils.topic_memory_service import TopicMemoryService
+from utils.topic_memory_models import CoveredTopic
+from agents.models.task_models import ReporterTask
+from agents.types import TaskType, ReporterField
+
+
+class EditorWithMemory:
+    """Editor agent with topic memory integration."""
+
+    def __init__(self, config_service):
+        """Initialize editor with topic memory."""
+        self.topic_memory = TopicMemoryService(config_service)
+
+    def create_reporter_task_with_forbidden_topics(
+        self,
+        task_type: TaskType,
+        field: ReporterField,
+        description: str,
+        days_back: int = 30
+    ) -> ReporterTask:
+        """Create reporter task with forbidden topics in guidelines."""
+
+        # Get forbidden topics as formatted text
+        forbidden_text = self.topic_memory.get_forbidden_topics_as_text(days_back)
+
+        # Create enhanced guidelines
+        enhanced_guidelines = f"""
+{description}
+
+{forbidden_text}
+
+IMPORTANT: Ensure your proposed topics are unique and not similar to the forbidden topics listed above.
+Focus on fresh angles and new developments that haven't been covered recently.
+"""
+
+        return ReporterTask(
+            name=task_type,
+            field=field,
+            description=description,
+            guidelines=enhanced_guidelines.strip()
+        )
+
+    def add_published_story_to_memory(self, title: str, description: str) -> bool:
+        """Add published story to topic memory."""
+        topic = CoveredTopic(
+            title=title,
+            description=description,
+            date_added=datetime.now().strftime("%Y-%m-%d")
+        )
+        return self.topic_memory.add_topic(topic)
+
+
+async def test_editor_integration():
+    """Test complete editor integration with topic memory."""
+    print("🗞️ Editor Integration with Topic Memory Test")
+    print("=" * 60)
+
+    config_service = ConfigService()
+    editor = EditorWithMemory(config_service)
+
+    # Step 1: Add some existing topics to memory
+    print("\n1️⃣ Setting up existing topics in memory...")
+
+    existing_topics = [
+        CoveredTopic(
+            title="Apple's New iPhone Features",
+            description="Apple announces AI-powered camera improvements",
+            date_added="2024-01-15"
+        ),
+        CoveredTopic(
+            title="NASA Mars Mission Update",
+            description="Latest findings from Mars rover exploration",
+            date_added="2024-01-14"
+        )
+    ]
+
+    for topic in existing_topics:
+        success = editor.topic_memory.add_topic(topic)
+        print(f"   {'✅' if success else '❌'} Added: {topic.title}")
+
+    # Step 2: Create reporter task with forbidden topics
+    print("\n2️⃣ Creating reporter task with forbidden topics...")
+
+    task = editor.create_reporter_task_with_forbidden_topics(
+        task_type=TaskType.FIND_TOPICS,
+        field=ReporterField.TECHNOLOGY,
+        description="Find 3 trending topics in technology",
+        days_back=30
+    )
+
+    print(f"   📝 Created task for {task.field.value}")
+    print(f"   📋 Task guidelines include forbidden topics:")
+    print(f"   {task.guidelines[:200]}...")
+
+    # Step 3: Simulate story publication
+    print("\n3️⃣ Simulating story publication...")
+
+    new_story = {
+        "title": "Google's Quantum Computing Breakthrough",
+        "description": "Google announces major advancement in quantum error correction"
+    }
+
+    success = editor.add_published_story_to_memory(
+        title=new_story["title"],
+        description=new_story["description"]
+    )
+
+    print(f"   {'✅' if success else '❌'} Published and added to memory: {new_story['title']}")
+
+    # Step 4: Verify the new topic is now forbidden
+    print("\n4️⃣ Verifying new topic is now in forbidden list...")
+
+    forbidden_text = editor.topic_memory.get_forbidden_topics_as_text(days_back=1)
+    if new_story["title"] in forbidden_text:
+        print(f"   ✅ New topic is now in forbidden list")
+    else:
+        print(f"   ⚠️  New topic not found in forbidden list")
+
+    # Step 5: Show memory statistics
+    print("\n5️⃣ Final memory statistics...")
+    stats = editor.topic_memory.get_memory_stats()
+    print(f"   📊 Total topics: {stats['total_topics']}")
+    print(f"   📊 Recent topics (7 days): {stats['recent_topics_7_days']}")
+    print(f"   📊 Recent topics (30 days): {stats['recent_topics_30_days']}")
+
+    print("\n🎉 Editor integration test completed!")
+
+
+# In a Python shell call:
+# import asyncio; asyncio.run(test_editor_integration())
+```
+
+### 5.2 Use Existing Task Models (no changes required)
+
+You do not need to modify the task models. The current ReporterTask already has the fields you need, including guidelines for injecting forbidden topics.
+
+Example (excerpt from agents/models/task_models.py):
+```python
+class ReporterTask(BaseModel):
+    name: TaskType
+    field: ReporterField
+    sub_section: TechnologySubSection | EconomicsSubSection | ScienceSubSection | None = None
+    description: str
+    guidelines: str | None = None
+    min_sources: int = 1
+    target_word_count: int = 500
+    require_images: bool = False
+```
+
+Tip: Use the guidelines field to pass the FORBIDDEN TOPICS block into reporter tasks without changing any model definitions.
+
+## 🧪 Step 6: Complete Testing Suite
+
+### 6.1 Quick Checks (no test files required)
+
+Use the inline quick checks from Step 4 and Step 5 inside a Python shell to validate behavior. There are no test files in this repository.
+
+### 6.2 What To Look For
+
+- Added sample topics are persisted (you see them listed)
+- Forbidden topics text shows a bullet list with titles and descriptions
+- Similarity check flags clearly related topics
+- Memory statistics report totals and recent counts
+
+1️⃣ Adding sample topics...
+   ✅ Added: OpenAI GPT-5 Release
+   ✅ Added: Climate Change Impact on Agriculture
+   ✅ Added: Federal Reserve Interest Rate Decision
+
+2️⃣ Getting forbidden topics...
+   ✅ Found 3 forbidden topics
+      - OpenAI GPT-5 Release
+      - Climate Change Impact on Agriculture
+      - Federal Reserve Interest Rate Decision
+
+3️⃣ Getting forbidden topics as formatted text...
+   📝 Formatted text for prompt injection:
+   FORBIDDEN TOPICS (avoid these recent topics):
+   - OpenAI GPT-5 Release: Coverage of OpenAI's latest language model and its capabilities
+   - Climate Change Impact on Agriculture: Analysis of rising temperatures affecting global crop yields
+   - Federal Reserve Interest Rate Decision: Analysis of the Fed's latest monetary policy changes
+
+4️⃣ Checking similarity for proposed topics...
+   ✅ Similarity check completed
+      ⚠️  'OpenAI's New AI Model Launch' is similar to: ['OpenAI GPT-5 Release']
+      ✅ 'Quantum Computing Breakthrough' is unique
+      ⚠️  'Climate Effects on Farming' is similar to: ['Climate Change Impact on Agriculture']
+
+5️⃣ Memory statistics...
+   📊 Total topics: 3
+   📊 Recent topics (7 days): 3
+   📊 Recent topics (30 days): 3
+
+🎉 Topic memory test completed!
+```
+
+**Test 2 - Editor Integration:**
+```
+🗞️ Editor Integration with Topic Memory Test
+============================================================
+
+1️⃣ Setting up existing topics in memory...
+   ✅ Added: Apple's New iPhone Features
+   ✅ Added: NASA Mars Mission Update
+
+2️⃣ Creating reporter task with forbidden topics...
+   📝 Created task for technology
+   📋 Task guidelines include forbidden topics:
+   Find 3 trending topics in technology
+
+   FORBIDDEN TOPICS (avoid these recent topics):
+   - Apple's New iPhone Features: Apple announces AI-powered camera improvements
+   - NASA Mars Mission Update: Latest findings from Mars rover exploration...
+
+3️⃣ Simulating story publication...
+   ✅ Published and added to memory: Google's Quantum Computing Breakthrough
+
+4️⃣ Verifying new topic is now in forbidden list...
+   ✅ New topic is now in forbidden list
+
+5️⃣ Final memory statistics...
+   📊 Total topics: 3
+   📊 Recent topics (7 days): 3
+   📊 Recent topics (30 days): 3
+
+🎉 Editor integration test completed!
+```
+
+## 🔧 Step 7: Create Topic Memory Management Utilities
+
+### 7.1 Create Topic Memory Manager Script (optional)
 
 Create a utility script for managing the topic memory:
 
 ```python
-# Create file: manage_topic_memory.py
+# Create file: libs/common/utils/manage_topic_memory.py
 """Utility script for managing topic memory."""
 
 import asyncio
@@ -974,8 +865,6 @@ async def show_statistics(memory_service: TopicMemoryService):
     print(f"   Last updated: {stats['last_updated']}")
     print(f"   Recent topics (7 days): {stats['recent_topics_7_days']}")
     print(f"   Recent topics (30 days): {stats['recent_topics_30_days']}")
-    print(f"   Topics by field: {stats['topics_by_field']}")
-    print(f"   Topics by status: {stats['topics_by_status']}")
 
 
 async def list_recent_topics(memory_service: TopicMemoryService):
@@ -988,8 +877,7 @@ async def list_recent_topics(memory_service: TopicMemoryService):
     print(f"\n📋 Topics from last {days} days ({len(recent_topics)} found):")
     for i, topic in enumerate(recent_topics, 1):
         print(f"   {i}. {topic.title}")
-        print(f"      Field: {topic.field.value}")
-        print(f"      Date: {topic.published_date}")
+        print(f"      Date: {topic.date_added}")
         print(f"      Description: {topic.description}")
         print()
 
@@ -1005,15 +893,14 @@ async def search_topics(memory_service: TopicMemoryService):
     matching_topics = []
     for topic in memory_service.memory.topics:
         if (keyword in topic.title.lower() or
-            keyword in topic.description.lower() or
-            any(keyword in kw.lower() for kw in topic.keywords)):
+            keyword in topic.description.lower()):
             matching_topics.append(topic)
 
     print(f"\n🔍 Topics matching '{keyword}' ({len(matching_topics)} found):")
     for i, topic in enumerate(matching_topics, 1):
         print(f"   {i}. {topic.title}")
-        print(f"      Date: {topic.published_date}")
-        print(f"      Keywords: {', '.join(topic.keywords)}")
+        print(f"      Date: {topic.date_added}")
+        print(f"      Description: {topic.description}")
         print()
 
 
@@ -1042,7 +929,7 @@ async def clear_old_topics(memory_service: TopicMemoryService):
     days = int(days)
     cutoff_date = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
 
-    old_topics = [topic for topic in memory_service.memory.topics if topic.published_date < cutoff_date]
+    old_topics = [topic for topic in memory_service.memory.topics if topic.date_added < cutoff_date]
 
     if not old_topics:
         print(f"✅ No topics older than {days} days found.")
@@ -1050,7 +937,7 @@ async def clear_old_topics(memory_service: TopicMemoryService):
 
     print(f"⚠️  Found {len(old_topics)} topics older than {days} days:")
     for topic in old_topics[:5]:  # Show first 5
-        print(f"   - {topic.title} ({topic.published_date})")
+        print(f"   - {topic.title} ({topic.date_added})")
 
     if len(old_topics) > 5:
         print(f"   ... and {len(old_topics) - 5} more")
@@ -1059,7 +946,7 @@ async def clear_old_topics(memory_service: TopicMemoryService):
 
     if confirm == 'y':
         # Remove old topics
-        memory_service.memory.topics = [topic for topic in memory_service.memory.topics if topic.published_date >= cutoff_date]
+        memory_service.memory.topics = [topic for topic in memory_service.memory.topics if topic.date_added >= cutoff_date]
         memory_service.memory.total_topics = len(memory_service.memory.topics)
         memory_service.memory.last_updated = datetime.now()
 
@@ -1076,84 +963,34 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-## 🧪 Step 7: Complete Integration Testing
+## 🧪 Step 8: Final Integration and Summary
 
-### 7.1 Run All Tests
+### 8.1 Quick Checks Recap
 
-Execute the test scripts to verify everything works:
+- Run the inline quick checks from Step 4 and Step 5 inside a Python shell
+- Optional: run the interactive manager if you created it
 
 ```bash
-# Test 1: Basic topic memory functionality
-python test_topic_memory.py
-
-# Test 2: Complete editor workflow
-python test_editor_workflow.py
-
-# Test 3: Interactive memory management
-python manage_topic_memory.py
+python libs/common/utils/manage_topic_memory.py
 ```
 
-### 7.2 Expected Test Results
+### 8.2 Design Focus
 
-**Test 1 - Topic Memory System:**
-```
-🧠 Topic Memory System Test
-========================================
+This approach focuses on the essential functionality:
 
-1️⃣ Adding sample topics...
-   ✅ Added: OpenAI GPT-5 Release
-   ✅ Added: Climate Change Impact on Agriculture
-   ✅ Added: Federal Reserve Interest Rate Decision
+1. Data structure focused on essentials:
+   - Fields: `title`, `description`, `date_added`
 
-2️⃣ Getting forbidden topics for technology field...
-   ✅ Found 1 forbidden topics
-      - OpenAI GPT-5 Release
+2. Prompt injection (no extra tools):
+   - Editor injects forbidden topics directly into `ReporterTask.guidelines`
 
-3️⃣ Checking similarity for proposed topics...
-   ✅ Similarity check completed
-      ⚠️  'OpenAI's New AI Model Launch' is similar to: ['OpenAI GPT-5 Release']
-      ✅ 'Quantum Computing Breakthrough' is unique
-      ⚠️  'Climate Effects on Farming' is similar to: ['Climate Change Impact on Agriculture']
+3. Unified topic memory:
+   - Single memory for all fields with date-based filtering and simple word-overlap similarity
 
-4️⃣ Memory statistics...
-   📊 Total topics: 3
-   📊 Topics by field: {'technology': 1, 'science': 1, 'economics': 1}
-   📊 Recent topics (7 days): 3
-   📊 Recent topics (30 days): 3
+4. Streamlined workflow:
+   - Load forbidden topics → inject into guidelines → publish → add to memory
 
-🎉 Topic memory test completed!
-```
-
-**Test 2 - Complete Workflow:**
-```
-🗞️ Complete Editor Workflow Test
-==================================================
-
-1️⃣ Checking current forbidden topics...
-   📋 Found 1 forbidden topics:
-      - OpenAI GPT-5 Release
-
-2️⃣ Collecting topics with forbidden topics awareness...
-   📝 Created task with 1 forbidden topics
-
-3️⃣ Simulating story publication...
-   ✅ Added new topic to memory: Quantum Computing Breakthrough at IBM
-   📊 Total topics in memory: 4
-
-4️⃣ Verifying topic is now in forbidden list...
-   ✅ New topic is now in forbidden list
-   📋 Current forbidden topics: 1
-
-5️⃣ Testing similarity detection...
-   🔍 Similarity check results:
-      ⚠️  'IBM's Quantum Computing Advance' conflicts with: ['Quantum Computing Breakthrough at IBM']
-      ✅ 'New Blockchain Technology' is unique
-      ⚠️  'Quantum Error Correction Progress' conflicts with: ['Quantum Computing Breakthrough at IBM']
-
-🎉 Complete workflow test finished!
-```
-
-### 7.3 Verify File Structure
+### 8.3 Verify File Structure
 
 Check that the topic memory files are created correctly:
 
@@ -1180,24 +1017,23 @@ Expected JSON content:
     {
       "title": "OpenAI GPT-5 Release",
       "description": "Coverage of OpenAI's latest language model and its capabilities",
-      "field": "technology",
-      "sub_section": null,
-      "published_date": "2024-01-15",
-      "story_id": "story-tech-001",
-      "keywords": ["openai", "gpt-5", "ai", "language model"],
-      "status": "published",
-      "similarity_threshold": 0.8
+      "date_added": "2024-01-15"
+    },
+    {
+      "title": "Climate Change Impact on Agriculture",
+      "description": "Analysis of rising temperatures affecting global crop yields",
+      "date_added": "2024-01-14"
     }
   ],
-  "total_topics": 1
+  "total_topics": 2
 }
 ```
 
-## 🎯 Step 8: Integration with Full Newspaper Generation
+## 🎯 Step 9: Integration with Full Newspaper Generation
 
-### 8.1 Update Newspaper Generation Script
+### 9.1 Update Newspaper Generation Script
 
-Modify your newspaper generation script to use the topic memory system:
+Modify your newspaper generation script to use the simplified topic memory system:
 
 ```python
 # Update your existing newspaper generation script
@@ -1209,256 +1045,98 @@ async def generate_newspaper_with_memory():
     print("=" * 50)
 
     config_service = ConfigService()
-    task_service = TaskExecutionService(config_service)
-    factory = AgentFactory(config_service, task_service)
+    editor_with_memory = EditorWithMemory(config_service)
 
-    editor = factory.create_editor()
-    forbidden_tool = ForbiddenTopicsTool(config_service)
-
-    # Step 1: Get forbidden topics for each field
+    # Step 1: Create reporter tasks with forbidden topics
     fields = [ReporterField.TECHNOLOGY, ReporterField.SCIENCE, ReporterField.ECONOMICS]
-    all_forbidden = {}
 
     for field in fields:
-        params = ForbiddenTopicsParams(
-            operation="get_forbidden",
+        # Create task with forbidden topics injected into guidelines
+        task = editor_with_memory.create_reporter_task_with_forbidden_topics(
+            task_type=TaskType.FIND_TOPICS,
             field=field,
+            description=f"Find 3 trending topics in {field.value}",
             days_back=30
         )
-        result = await forbidden_tool.execute(params)
 
-        if result.success:
-            all_forbidden[field] = {
-                'topics': result.forbidden_topics,
-                'descriptions': result.forbidden_descriptions
-            }
-            print(f"📋 {field.value}: {len(result.forbidden_topics)} forbidden topics")
-        else:
-            all_forbidden[field] = {'topics': [], 'descriptions': []}
-            print(f"⚠️  {field.value}: Failed to get forbidden topics")
+        print(f"📝 Created {field.value} task with forbidden topics in guidelines")
 
-    # Step 2: Generate stories with forbidden topics awareness
-    # (Your existing story generation logic here, but pass forbidden topics to reporters)
+        # Your existing reporter execution logic here...
+        # reporter = factory.create_reporter(field)
+        # topics = await reporter.execute_task(task)
 
-    # Step 3: After publishing each story, add to memory
+    # Step 2: After publishing each story, add to memory
     # Example for a published story:
     """
-    new_topic = CoveredTopic(
+    success = editor_with_memory.add_published_story_to_memory(
         title=story.title,
-        description=story.summary,
-        field=story.field,
-        published_date=datetime.now().strftime("%Y-%m-%d"),
-        story_id=story.id,
-        keywords=extract_keywords_from_story(story.content)
+        description=story.summary
     )
 
-    add_params = ForbiddenTopicsParams(
-        operation="add_topic",
-        new_topic=new_topic
-    )
-    await forbidden_tool.execute(add_params)
+    if success:
+        print(f"✅ Added story to memory: {story.title}")
     """
 
     print("✅ Newspaper generation with topic memory completed!")
 ```
 
-### 8.2 Create Complete Integration Example
+## 🎉 Step 10: Lab Summary and Next Steps
 
-```python
-# Create file: complete_integration_example.py
-"""Complete integration example showing topic memory in action."""
+### 10.1 What You've Built
 
-import asyncio
-from datetime import datetime
+Congratulations! You've successfully implemented a topic memory system that:
 
-from agents.types import ReporterField
-from core.config_service import ConfigService
-from utils.forbidden_topics_tool import ForbiddenTopicsTool, ForbiddenTopicsParams
-from utils.topic_memory_models import CoveredTopic
+1. **Prevents Content Duplication**: Tracks covered topics and prevents repetition
+2. **Simple Data Structure**: Uses only essential fields (title, description, date_added)
+3. **Prompt Injection**: Injects forbidden topics directly into reporter guidelines
+4. **File-Based Persistence**: Stores topic memory in JSON files without databases
+5. **Basic Similarity Detection**: Uses word overlap to detect similar topics
 
+### 10.2 Key Benefits of This Approach
 
-async def simulate_news_cycle():
-    """Simulate a complete news cycle with topic memory."""
-    print("📰 Simulating Complete News Cycle with Topic Memory")
-    print("=" * 60)
+- **Easier to Implement**: Fewer models, tools, and complex workflows
+- **Easier to Maintain**: Simple data structure and straightforward logic
+- **Easier to Debug**: Clear separation between memory storage and prompt injection
+- **Easier to Extend**: Can add complexity later if needed
 
-    config_service = ConfigService()
-    forbidden_tool = ForbiddenTopicsTool(config_service)
+### 10.3 Files Created in This Lab
 
-    # Simulate Day 1: First news cycle
-    print("\n📅 DAY 1: First News Cycle")
-    print("-" * 30)
+```
+libs/common/utils/
+├── topic_memory_models.py      # Data models
+├── topic_memory_service.py     # Memory management service
+└── manage_topic_memory.py      # Management utility (optional)
 
-    day1_stories = [
-        CoveredTopic(
-            title="Apple Announces New iPhone Features",
-            description="Apple reveals AI-powered camera and battery improvements",
-            field=ReporterField.TECHNOLOGY,
-            published_date="2024-01-15",
-            story_id="story-tech-001",
-            keywords=["apple", "iphone", "ai", "camera", "battery"]
-        ),
-        CoveredTopic(
-            title="NASA Mars Mission Update",
-            description="Latest findings from Mars rover exploration mission",
-            field=ReporterField.SCIENCE,
-            published_date="2024-01-15",
-            story_id="story-sci-001",
-            keywords=["nasa", "mars", "rover", "exploration", "space"]
-        )
-    ]
-
-    # Publish Day 1 stories
-    for story in day1_stories:
-        params = ForbiddenTopicsParams(operation="add_topic", new_topic=story)
-        result = await forbidden_tool.execute(params)
-        print(f"   ✅ Published: {story.title}")
-
-    # Simulate Day 2: Check forbidden topics before new cycle
-    print("\n📅 DAY 2: New News Cycle with Memory Check")
-    print("-" * 40)
-
-    # Check what topics are now forbidden
-    for field in [ReporterField.TECHNOLOGY, ReporterField.SCIENCE]:
-        params = ForbiddenTopicsParams(
-            operation="get_forbidden",
-            field=field,
-            days_back=30
-        )
-        result = await forbidden_tool.execute(params)
-
-        if result.success and result.forbidden_topics:
-            print(f"   🚫 {field.value} forbidden topics: {result.forbidden_topics}")
-        else:
-            print(f"   ✅ {field.value}: No forbidden topics")
-
-    # Propose new topics and check for conflicts
-    proposed_topics = [
-        "Apple's New iPhone Camera Technology",  # Should conflict
-        "Google's Latest AI Breakthrough",      # Should be unique
-        "Mars Rover Discovers Water Evidence"   # Should conflict
-    ]
-
-    params = ForbiddenTopicsParams(
-        operation="check_similarity",
-        proposed_topics=proposed_topics
-    )
-    result = await forbidden_tool.execute(params)
-
-    print(f"\n   🔍 Checking proposed topics for Day 2:")
-    for proposed, similar in result.similar_topics.items():
-        if similar:
-            print(f"      ❌ REJECT: '{proposed}' (similar to: {similar})")
-        else:
-            print(f"      ✅ APPROVE: '{proposed}' (unique)")
-
-    # Publish only unique topics
-    unique_topics = [
-        CoveredTopic(
-            title="Google's Latest AI Breakthrough",
-            description="Google announces new AI model with improved reasoning",
-            field=ReporterField.TECHNOLOGY,
-            published_date="2024-01-16",
-            story_id="story-tech-002",
-            keywords=["google", "ai", "breakthrough", "reasoning", "model"]
-        )
-    ]
-
-    for story in unique_topics:
-        params = ForbiddenTopicsParams(operation="add_topic", new_topic=story)
-        result = await forbidden_tool.execute(params)
-        print(f"   ✅ Published unique story: {story.title}")
-
-    # Show final memory statistics
-    print(f"\n📊 Final Memory Statistics:")
-    if forbidden_tool.topic_memory:
-        stats = forbidden_tool.topic_memory.get_memory_stats()
-        print(f"   Total topics in memory: {stats['total_topics']}")
-        print(f"   Topics by field: {stats['topics_by_field']}")
-        print(f"   Recent topics (2 days): {len(forbidden_tool.topic_memory.memory.get_recent_topics(2))}")
-
-    print("\n🎉 News cycle simulation completed!")
-    print("✅ Topic duplication successfully prevented!")
-
-
-if __name__ == "__main__":
-    asyncio.run(simulate_news_cycle())
+data/topics/
+└── covered_topics.json         # Persistent topic storage
 ```
 
-## 🏆 Step 9: Verification and Best Practices
+### 10.4 Next Steps
 
-### 9.1 Verification Checklist
+After completing this lab, you can:
 
-Run through this checklist to ensure everything is working:
+1. **Integrate with Your Editor Agent**: Use the `EditorWithMemory` class
+2. **Enhance Similarity Detection**: Add more sophisticated algorithms if needed
+3. **Add Topic Categories**: Extend the model to include field categorization
+4. **Implement Auto-Cleanup**: Add scheduled cleanup of old topics
+5. **Add Analytics**: Track topic trends and coverage patterns
 
-- [ ] ✅ Topic memory file is created in `data/topics/covered_topics.json`
-- [ ] ✅ ForbiddenTopicsTool can add topics to memory
-- [ ] ✅ ForbiddenTopicsTool can retrieve forbidden topics by field
-- [ ] ✅ ForbiddenTopicsTool can detect similar topics
-- [ ] ✅ Editor agent has access to forbidden topics tool
-- [ ] ✅ Reporter tasks include forbidden topics in guidelines
-- [ ] ✅ Memory persists between application restarts
-- [ ] ✅ Topic similarity detection works correctly
-- [ ] ✅ Memory management utilities function properly
+### 10.5 Testing Your Implementation
 
-### 9.2 Best Practices for Topic Memory
+Run these commands to verify everything works:
 
-**Editorial Guidelines:**
-1. **Regular Memory Maintenance**: Use the management utility weekly to clean old topics
-2. **Similarity Threshold**: Adjust similarity thresholds based on your content needs
-3. **Keyword Strategy**: Use comprehensive keywords for better duplicate detection
-4. **Field-Specific Memory**: Maintain separate forbidden lists per field
-5. **Memory Backup**: Regularly export memory for backup purposes
+```bash
+# Interactive management (optional, if you created it)
+python libs/common/utils/manage_topic_memory.py
+```
 
-**Performance Considerations:**
-1. **Memory Size**: Keep memory file under 10MB for optimal performance
-2. **Cleanup Schedule**: Remove topics older than 90 days automatically
-3. **Similarity Algorithm**: Consider upgrading to more sophisticated similarity detection
-4. **Caching**: Implement caching for frequently accessed forbidden topics
+### 10.6 Design Principles
 
-**Integration Tips:**
-1. **Error Handling**: Always handle memory service failures gracefully
-2. **Fallback Strategy**: Have a fallback when topic memory is unavailable
-3. **Logging**: Log all topic additions and similarity checks for debugging
-4. **Testing**: Test with various topic combinations and edge cases
+1. Streamlined data structure (title, description, date_added)
+2. Prompt injection approach via `ReporterTask.guidelines`
+3. Unified topic memory with simple date filtering and similarity
+4. Clean workflow: load → inject → publish → persist
 
-## 🎯 Lab 3 Summary
+These choices keep the lab focused, easy to implement, and easy to extend later.
 
-Congratulations! You've successfully implemented a comprehensive content improvement system with topic deduplication and editorial memory. Here's what you've accomplished:
-
-### ✅ **Key Features Implemented:**
-
-1. **Topic Memory System**: Persistent storage of covered topics with metadata
-2. **Forbidden Topics Tool**: Editor tool for managing topic deduplication
-3. **Similarity Detection**: Automatic detection of similar topics to prevent duplication
-4. **Editorial Workflow Integration**: Seamless integration with editor-reporter workflow
-5. **Memory Management**: Utilities for maintaining and managing topic memory
-6. **Field-Specific Filtering**: Separate forbidden topics per news field
-7. **Persistent Storage**: File-based storage without database dependencies
-
-### 🔧 **Technical Achievements:**
-
-- **Pydantic Models**: Type-safe data models for topic memory
-- **Service Architecture**: Clean separation of concerns with TopicMemoryService
-- **Tool Integration**: Proper integration with existing agent tool system
-- **Error Handling**: Robust error handling and fallback mechanisms
-- **Testing Suite**: Comprehensive tests for all functionality
-- **Management Utilities**: Interactive tools for memory management
-
-### 📈 **Editorial Benefits:**
-
-- **Content Uniqueness**: Prevents topic repetition across news cycles
-- **Editorial Consistency**: Maintains consistent coverage standards
-- **Quality Control**: Improves overall content quality through deduplication
-- **Efficiency**: Reduces wasted effort on duplicate content
-- **Scalability**: Handles growing topic databases efficiently
-
-Your BobTimes newspaper now has intelligent editorial memory that ensures fresh, unique content in every news cycle!
-
-**🔄 Ready for Advanced Features?** Consider implementing:
-- Advanced similarity algorithms (semantic similarity, embeddings)
-- Topic trending analysis
-- Automated topic suggestion based on gaps in coverage
-- Integration with external news APIs for broader topic awareness
-
-🎉 **Lab 3 Complete!** Your editorial system now has the intelligence to maintain content quality and uniqueness across all news cycles.
+🎯 **Lab 3 Complete!** You now have a working topic deduplication system that will prevent your AI newspaper from repeating content across news cycles while maintaining clean, maintainable code.
