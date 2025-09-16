@@ -521,15 +521,64 @@ class SelectTopicsTool(BaseTool):
                 success=True
             )
 
-        # For now, implement a simple selection strategy
-        # In a full implementation, this would use LLM-based editorial judgment
+        # Deduplicate against recently covered topics using TopicMemoryService
+        try:
+            config_service = ConfigService()
+            memory = TopicMemoryService(config_service)
+            # Exact-title forbidden set (recent topics)
+            forbidden_titles_lower = {t.title.lower().strip() for t in memory.get_forbidden_topics(days_back=30)}
+            # Similarity check against memory for semantic overlaps
+            similarity_map = memory.check_topic_similarity(params.available_topics)
+        except Exception:
+            logger.exception("Failed to initialize topic memory for selection; proceeding without memory filter")
+            forbidden_titles_lower: set[str] = set()
+            similarity_map: dict[str, list[str]] = {t: [] for t in params.available_topics}
 
-        # Simple strategy: select first N topics (could be enhanced with LLM analysis)
-        selected_topics = params.available_topics[:topics_to_select]
-        rejected_topics = params.available_topics[topics_to_select:]
+        # Filter available topics: exclude exact matches or high-overlap similarities
+        allowed: list[str] = []
+        forbidden_exact_count = 0
+        forbidden_similar_count = 0
+        for topic in params.available_topics:
+            low = topic.lower().strip()
+            if low in forbidden_titles_lower:
+                forbidden_exact_count += 1
+                continue
+            similar = similarity_map.get(topic, [])
+            if len(similar) > 0:
+                forbidden_similar_count += 1
+                continue
+            allowed.append(topic)
 
-        reasoning = f"Selected {len(selected_topics)} topics from {len(params.available_topics)} available topics for {params.field.value} field. "
-        reasoning += f"Selection based on editorial priority and resource constraints (max {params.stories_per_field} stories per field)."
+        selected_topics = allowed[:topics_to_select]
+        # Everything not selected is rejected (includes filtered and leftovers)
+        selected_set = set(selected_topics)
+        rejected_topics = [t for t in params.available_topics if t not in selected_set]
+
+        if len(selected_topics) == 0:
+            reasoning = (
+                f"All {len(params.available_topics)} proposed topics for {params.field.value} were duplicates or overlapped with recently covered topics. "
+                f"Rejected {forbidden_exact_count} exact matches and {forbidden_similar_count} similar topics."
+            )
+            logger.info(
+                "📝 Topic selection yielded no unique topics",
+                field=params.field.value,
+                available_count=len(params.available_topics),
+                rejected_count=len(rejected_topics),
+                forbidden_exact=forbidden_exact_count,
+                forbidden_similar=forbidden_similar_count,
+            )
+            return SelectTopicsResult(
+                reasoning=reasoning,
+                selected_topics=[],
+                rejected_topics=rejected_topics,
+                success=True
+            )
+
+        reasoning = (
+            f"Selected {len(selected_topics)} topics from {len(params.available_topics)} available topics for {params.field.value}. "
+            f"Deduplicated against recently covered topics (rejected {forbidden_exact_count} exact and {forbidden_similar_count} similar). "
+            f"Resource constraint: max {params.stories_per_field} stories per field."
+        )
 
         logger.info(
             "📝 Topic selection completed",
@@ -537,6 +586,8 @@ class SelectTopicsTool(BaseTool):
             available_count=len(params.available_topics),
             selected_count=len(selected_topics),
             rejected_count=len(rejected_topics),
+            forbidden_exact=forbidden_exact_count,
+            forbidden_similar=forbidden_similar_count,
             selected_topics=", ".join(selected_topics)
         )
 

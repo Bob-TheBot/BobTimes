@@ -300,6 +300,17 @@ The response must contain either:
                 "",
             ])
 
+            # Explicitly instruct the reporter to IGNORE any forbidden topics that may be listed in guidelines
+            prompt_parts.extend([
+                "# FORBIDDEN TOPICS POLICY",
+                "If the EDITORIAL GUIDELINES include a 'FORBIDDEN TOPICS' section, you must strictly avoid them:",
+                "- Do NOT propose, research, or write about any topic listed under FORBIDDEN TOPICS.",
+                "- Do NOT include topics that are substantially similar (same core subject, phrasing, or entities).",
+                "- If a discovered topic overlaps with a forbidden one, discard it and find an alternative.",
+                "- Ensure TopicList and StoryDraft contain ZERO forbidden or overlapping topics.",
+                "",
+            ])
+
         # Add task-specific instructions
         if task.name == TaskType.FIND_TOPICS:
             prompt_parts.extend(self._build_find_topics_instructions(task, state))
@@ -402,7 +413,17 @@ The response must contain either:
                 "   - Include unique YouTube topics that show emerging trends"
             ])
 
-        instructions.extend(["", "Expected TopicList schema:", f"{TopicList.model_json_schema()}"])
+        instructions.extend([
+            "",
+            "SIMILARITY SCREENING (MANDATORY)",
+            "- Compare each candidate topic with the 'FORBIDDEN TOPICS' in EDITORIAL GUIDELINES.",
+            "- Perform semantic similarity, considering named entities (people, orgs, products), core subject/event, timeframe, and paraphrases/near-duplicates.",
+            "- Treat as similar if it refers to the same core topic or is a rephrasing; discard it and propose an alternative.",
+            "- Only submit topics with ZERO overlap to forbidden topics.",
+            "",
+            "Expected TopicList schema:",
+            f"{TopicList.model_json_schema()}"
+        ])
 
         return instructions
 
