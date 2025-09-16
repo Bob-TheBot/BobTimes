@@ -1,5 +1,5 @@
 {
-  "last_updated": "2025-09-16 08:38:20.589389",
+  "last_updated": "2025-09-16 09:01:08.536097",
   "topics": [
     {
       "title": "The Best Use of Claude Code Sub\u2011Agents: When to Split Workflows into Specialist Assistants",
@@ -25,7 +25,12 @@
       "title": "IDE-native assistants take hold: VS Code AI Toolkit 2.0, GPT-5 connectors and the next wave of developer tooling",
       "description": "VS Code AI Toolkit 2.0 adds extensible, IDE-native AI features and connectors that let developers route prompts to models such as GPT-5. The approach emphasizes an open extension ecosystem and workflow integration, contrasting with vendor-specific offerings like GitHub Copilot and AWS CodeWhisperer. While the toolkit reduces context switching and speeds common tasks, it raises security and telemetry questions that organizations must manage.",
       "date_added": "2025-09-16"
+    },
+    {
+      "title": "The Best Use of Claude Code Sub-Agents \u2014 Research-Backed Workflows for Developers",
+      "description": "Claude Code sub-agents let developers decompose complex workflows into specialized AI assistants. A practitioner tutorial demonstrates time savings across PR drafting, test generation, and code review when tasks are delegated to focused sub-agents. Best practices include explicit prompts, least-privilege tool access, CI validation and monitoring to control cost and mitigate hallucinations.",
+      "date_added": "2025-09-16"
     }
   ],
-  "total_topics": 5
+  "total_topics": 6
 }

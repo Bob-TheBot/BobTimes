@@ -3,6 +3,9 @@
 import json
 from pathlib import Path
 from typing import Optional
+import re
+import unicodedata
+
 
 from core.config_service import ConfigService
 from core.logging_service import get_logger
@@ -80,17 +83,31 @@ class TopicMemoryService:
                 existing_lower = existing_topic.title.lower()
 
                 # Simple similarity check using word overlap
-                if self._calculate_similarity(proposed_lower, existing_lower) > 0.7:
+-                if self._calculate_similarity(proposed_lower, existing_lower) > 0.7:
++                if self._calculate_similarity(proposed_lower, existing_lower) >= 0.6:
                     similar.append(existing_topic.title)
 
             similar_topics[proposed] = similar
 
         return similar_topics
 
+    def _normalize(self, text: str) -> list[str]:
+        """Normalize text for robust similarity: lowercase, NFKC, unify dashes, strip punctuation, remove stopwords."""
+        import re
+        import unicodedata
+
+        s = unicodedata.normalize("NFKC", text.lower())
+        # Unify various dash characters to '-'
+        s = re.sub(r"[‐‑‒–—―]", "-", s)
+        # Remove punctuation except dash and word chars
+        s = re.sub(r"[^\w\s-]", " ", s)
+        tokens = [t for t in s.split() if t not in {"the", "a", "an", "of", "for", "to", "and", "in", "on", "with", "by"}]
+        return tokens
+
     def _calculate_similarity(self, text1: str, text2: str) -> float:
-        """Calculate simple similarity between two text strings using word overlap."""
-        words1 = set(text1.split())
-        words2 = set(text2.split())
+        """Calculate similarity between two strings using Jaccard over normalized tokens."""
+        words1 = set(self._normalize(text1))
+        words2 = set(self._normalize(text2))
 
         if not words1 or not words2:
             return 0.0
@@ -99,6 +116,29 @@ class TopicMemoryService:
         union = words1.union(words2)
 
         return len(intersection) / len(union) if union else 0.0
+
+    def dedupe_topics(self, topics: list[str], threshold: float = 0.6) -> list[str]:
+        """Remove near-duplicates within the provided topic list using similarity threshold."""
+        kept: list[str] = []
+        for t in topics:
+            if any(self._calculate_similarity(t, k) >= threshold for k in kept):
+                continue
+            kept.append(t)
+        return kept
+
+    def filter_against_memory(self, topics: list[str], days_back: int = 30, threshold: float = 0.6) -> list[str]:
+        """Filter out topics that are similar to recently covered topics and dedupe within the batch."""
+        recent_titles = [t.title for t in self.get_forbidden_topics(days_back)]
+        allowed: list[str] = []
+        for t in topics:
+            # Exclude if similar to any recent memory topic
+            if any(self._calculate_similarity(t, r) >= threshold for r in recent_titles):
+                continue
+            # Exclude if similar to something already kept (intra-batch dedupe)
+            if any(self._calculate_similarity(t, k) >= threshold for k in allowed):
+                continue
+            allowed.append(t)
+        return allowed
 
     def get_memory_stats(self) -> dict:
         """Get statistics about the topic memory."""

@@ -403,14 +403,41 @@ Returns: CollectTopicsResult with topics organized by field
                 result = await self.task_executor.execute_researcher_task(task, model_speed=model_speed)
 
                 if isinstance(result, TopicList):
-                    topics_by_field[request.field] = result.topics
+                    # Server-side guardrail: filter out forbidden/similar topics and intra-batch near-duplicates
+                    try:
+                        config_service = ConfigService()
+                        memory = TopicMemoryService(config_service)
+                        # Exact-title forbidden set (recent topics)
+                        forbidden_titles_lower = {t.title.lower().strip() for t in memory.get_forbidden_topics(days_back=30)}
+                        # Similarity check against memory for semantic overlaps
+                        similarity_map = memory.check_topic_similarity(result.topics)
+
+                        # Filter out exact and similar-to-memory topics first, and remove exact duplicates
+                        candidates: list[str] = []
+                        seen_lower: set[str] = set()
+                        for topic in result.topics:
+                            low = topic.lower().strip()
+                            if low in seen_lower:
+                                continue
+                            if low in forbidden_titles_lower:
+                                continue
+                            if similarity_map.get(topic):
+                                continue
+                            seen_lower.add(low)
+                            candidates.append(topic)
+                        filtered_topics = candidates
+                    except Exception:
+                        logger.exception("Failed to filter topics against memory; using raw topics")
+                        filtered_topics = result.topics
+
+                    topics_by_field[request.field] = filtered_topics
                     logger.info(
                         f"✅ Received topics from {request.field.value}{sub_section_desc} reporter",
                         field=request.field.value,
                         sub_section=request.sub_section.value if request.sub_section else "none",
-                        topics_count=len(result.topics),
+                        topics_count=len(filtered_topics),
                         topics=", ".join(
-                            result.topics[:3]) + ("..." if len(result.topics) > 3 else "")
+                            filtered_topics[:3]) + ("..." if len(filtered_topics) > 3 else "")
                     )
                 else:
                     logger.warning(
